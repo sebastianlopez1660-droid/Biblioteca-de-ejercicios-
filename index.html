@@ -187,10 +187,16 @@ aside.filters{
 .fselect-label{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .fselect-arrow{color:var(--text-faint); font-size:10px; transition:transform .15s; flex:0 0 auto;}
 .fselect-wrap.open .fselect-arrow{transform:rotate(180deg); color:var(--accent);}
+/* El menú se posiciona con position:fixed (no absolute) y lo coloca el JS junto a su
+   botón. Siendo absolute quedaba dentro del panel de filtros, que tiene scroll propio y
+   recorte: en el móvil los desplegables de la parte baja aparecían cortados por el borde
+   del panel y tapados por la barra inferior. Fijo y con z-index alto, el menú se dibuja
+   sobre todo lo demás, se abre hacia arriba si no cabe abajo y ajusta su altura al hueco
+   disponible. Las medidas (left/top/width/max-height) las escribe posicionarMenu(). */
 .fselect-menu{
-  position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:120;
+  position:fixed; z-index:400;
   background:var(--panel-2); border:1px solid var(--accent-line); border-radius:8px;
-  max-height:240px; overflow-y:auto; display:none;
+  max-height:240px; overflow-y:auto; overscroll-behavior:contain; display:none;
   box-shadow:0 10px 30px rgba(0,0,0,.55);
 }
 .fselect-wrap.open .fselect-menu{display:block;}
@@ -412,7 +418,13 @@ main.results{flex:1; min-width:0; padding:20px 24px 60px;}
 .navtab.active{background:var(--accent-soft); color:#f0a8a0;}
 
 /* ---------- EVALUACIÓN ---------- */
-.evalmain{max-width:1180px; margin:0 auto;}
+/* width:100% es imprescindible: #app es un flex en columna y los márgenes laterales
+   "auto" de este main anulan el estirado del flex, así que la caja se dimensionaba por su
+   contenido y se quedaba en los 1180 px del max-width incluso en una pantalla de 375 px.
+   Eso era lo que estiraba el documento entero y obligaba a arrastrar la página de lado en
+   el móvil. Con el ancho fijado al 100%, las tablas anchas se desplazan dentro de su
+   propia tarjeta (que ya tiene overflow-x) y la página deja de moverse. */
+.evalmain{max-width:1180px; margin:0 auto; width:100%;}
 .evalintro{margin-bottom:18px;}
 .evalintro p{font-size:13px; color:var(--text-dim); line-height:1.55; margin:0; max-width:820px;}
 .evalcard{
@@ -2500,8 +2512,48 @@ function customSelect(opts){
       if(t) t.setAttribute('aria-expanded','false');
     });
     document.removeEventListener('mousedown', onDocClick);
+    desengancharReposicion();
   }
   function onDocClick(e){ if(!wrap.contains(e.target)) closeAll(); }
+
+  // Coloca el menú pegado a su botón. Al ser position:fixed hay que calcularlo a mano,
+  // pero a cambio no lo recorta el panel de filtros ni lo tapa la barra inferior.
+  function posicionarMenu(){
+    var r = trigger.getBoundingClientRect();
+    var margen = 8;
+    var huecoAbajo = window.innerHeight - r.bottom - margen;
+    var huecoArriba = r.top - margen;
+    menu.style.maxHeight = 'none';
+    var deseada = Math.min(menu.scrollHeight, 260);
+    // Si abajo no cabe un menú usable y arriba hay más sitio, se despliega hacia arriba.
+    var haciaArriba = (huecoAbajo < Math.min(deseada, 150)) && (huecoArriba > huecoAbajo);
+    var alto = Math.min(deseada, Math.max(120, haciaArriba ? huecoArriba : huecoAbajo));
+    var ancho = Math.min(Math.round(r.width), window.innerWidth - margen * 2);
+    var top = haciaArriba ? (r.top - alto - 4) : (r.bottom + 4);
+    var left = Math.round(r.left);
+    // Sujeción a la pantalla: aunque el botón quede a ras del borde (o medio oculto tras
+    // desplazar el panel), el menú entero sigue siendo visible y alcanzable con el dedo.
+    top = Math.max(margen, Math.min(top, window.innerHeight - alto - margen));
+    left = Math.max(margen, Math.min(left, window.innerWidth - ancho - margen));
+    menu.style.maxHeight = alto + 'px';
+    menu.style.width = ancho + 'px';
+    menu.style.left = Math.round(left) + 'px';
+    menu.style.top = Math.round(top) + 'px';
+  }
+  // Mientras está abierto sigue a su botón si algo se desplaza detrás; si otro desplegable
+  // lo cerró (closeAll cierra todos), se desengancha solo.
+  function onReposicion(){
+    if(wrap.classList.contains('open')) posicionarMenu();
+    else desengancharReposicion();
+  }
+  function engancharReposicion(){
+    window.addEventListener('scroll', onReposicion, true);
+    window.addEventListener('resize', onReposicion);
+  }
+  function desengancharReposicion(){
+    window.removeEventListener('scroll', onReposicion, true);
+    window.removeEventListener('resize', onReposicion);
+  }
 
   function marcar(i){
     if(!items.length) return;
@@ -2524,6 +2576,8 @@ function customSelect(opts){
     wrap.classList.add('open');
     trigger.setAttribute('aria-expanded','true');
     document.addEventListener('mousedown', onDocClick);
+    posicionarMenu(); // debe ir tras añadir "open": hasta entonces el menú no tiene medidas
+    engancharReposicion();
     var idx = 0;
     opts.options.forEach(function(o,i){ if(o.value === current) idx = i; });
     marcar(idx);
