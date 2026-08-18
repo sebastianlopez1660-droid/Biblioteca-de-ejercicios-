@@ -2542,9 +2542,20 @@ function customSelect(opts){
   }
   // Mientras está abierto sigue a su botón si algo se desplaza detrás; si otro desplegable
   // lo cerró (closeAll cierra todos), se desengancha solo.
-  function onReposicion(){
-    if(wrap.classList.contains('open')) posicionarMenu();
-    else desengancharReposicion();
+  var repoRAF = null;
+  function onReposicion(e){
+    // Deslizar el dedo por la propia lista de opciones (menu tiene overflow-y:auto) también
+    // dispara "scroll" en fase de captura. Reposicionar en ese momento fuerza un reflow en
+    // cada fotograma del gesto y el menú se sentía "trabado": el dedo scrollea la lista y el
+    // recálculo la vuelve a mover, así que el toque siguiente no acierta en la opción. Ese
+    // scroll interno no debe mover la caja en absoluto.
+    if(e && e.target && menu.contains(e.target)) return;
+    if(!wrap.classList.contains('open')){ desengancharReposicion(); return; }
+    if(repoRAF) return;
+    repoRAF = window.requestAnimationFrame(function(){
+      repoRAF = null;
+      if(wrap.classList.contains('open')) posicionarMenu();
+    });
   }
   function engancharReposicion(){
     window.addEventListener('scroll', onReposicion, true);
@@ -2553,6 +2564,7 @@ function customSelect(opts){
   function desengancharReposicion(){
     window.removeEventListener('scroll', onReposicion, true);
     window.removeEventListener('resize', onReposicion);
+    if(repoRAF){ window.cancelAnimationFrame(repoRAF); repoRAF = null; }
   }
 
   function marcar(i){
