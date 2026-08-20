@@ -817,6 +817,41 @@ button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-act
 <script>(function(){
 "use strict";
 
+// ==================== PERSISTENCIA (window.storage) ====================
+// Toda la app guarda su estado (rutina, evaluación, dosificación, historial, config,
+// videos) a través de window.storage.get/set — una API que NO existe en un navegador
+// normal; solo la provee el entorno donde se autoró originalmente este archivo. Fuera de
+// ahí (por ejemplo, este sitio publicado en Vercel y abierto en Chrome/Safari) window.storage
+// es undefined, así que guardar() no hacía nada, guardar()/cargar() nunca fallaban de forma
+// visible (los errores se ignoran con .catch(function(){})) pero tampoco persistían nunca
+// nada: todo vivía solo en memoria mientras la pestaña siguiera viva. En cuanto el navegador
+// recargaba la página por cualquier motivo —deslizar para refrescar, quedarse un rato en
+// segundo plano y que el sistema descargue la pestaña de memoria, o simplemente cerrar y
+// reabrir— loadEvaluacion() (y el resto) no encontraba nada guardado y arrancaba desde cero,
+// borrando en apariencia lo que se llevaba evaluado. No era que la app "se actualizara"
+// sola; es que nunca hubo detrás un guardado real.
+// Si window.storage ya existe (ese entorno especial), se respeta tal cual. Si no, aquí se
+// define un reemplazo con la misma forma (get/set devolviendo promesas, get resolviendo a
+// {value} o a null) respaldado por localStorage, que si sobrevive a recargas del navegador.
+if(!window.storage){
+  window.storage = {
+    get: function(key){
+      return new Promise(function(resolve){
+        var v;
+        try{ v = localStorage.getItem('biblioteca-ejercicios:' + key); }
+        catch(e){ resolve(null); return; }
+        resolve(v === null ? null : {value: v});
+      });
+    },
+    set: function(key, value){
+      return new Promise(function(resolve, reject){
+        try{ localStorage.setItem('biblioteca-ejercicios:' + key, value); resolve(); }
+        catch(e){ reject(e); }
+      });
+    }
+  };
+}
+
 var DATA = JSON.parse(document.getElementById('exercise-data').textContent);
 var TOTAL = DATA.length;
 
