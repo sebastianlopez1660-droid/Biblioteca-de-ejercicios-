@@ -4666,7 +4666,15 @@ function buildFilaEjercicio(ej, sIdx, eIdx){
 
   var key2 = sIdx + '-' + eIdx;
   if(state.evalLoadTableFor === key2 && rmV){
-    wrapper.appendChild(buildTablaCargas(rmV, ej.ejercicio, ej.nivelBanda, ej.elongacion, datosCorporal(ej)));
+    // datosCorporal(ej) usa el peso corporal de la PERSONA como respaldo (pesoCorporalRef) si
+    // la fila no tiene el suyo propio, así que devuelve un resultado válido para cualquier
+    // ejercicio con repeticiones —incluido uno evaluado a peso libre— en cuanto se rellena el
+    // peso corporal general de la evaluación. Sin este filtro, la tabla de cargas mostraba la
+    // nota y el lastre "con cuerpo" también en filas de peso libre o banda. El resto del
+    // código (calcRM, calcPctRM, el detalle del Historial, los PDF) ya exige
+    // tipoCargaDe(ej) === 'pesoCorporal' antes de llamar a datosCorporal(ej); aquí faltaba.
+    var esCorporalFila = tipoCargaDe(ej) === 'pesoCorporal';
+    wrapper.appendChild(buildTablaCargas(rmV, ej.ejercicio, ej.nivelBanda, ej.elongacion, esCorporalFila ? datosCorporal(ej) : null));
   }
   return wrapper;
 }
