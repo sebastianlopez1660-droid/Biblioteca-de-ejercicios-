@@ -5672,8 +5672,158 @@ function buildDosifDrawer(){
 
 // ==================== VISTA: HISTORIAL ====================
 // ==================== VISTA: CONFIGURACIÓN ====================
+// Panel de la copia en la nube, dentro de Config. Reutiliza los estilos que ya existen
+// (evalfield, headbtn, evalhint) para no introducir nada nuevo en el diseño.
+function buildNubePanel(){
+  var card = el('div',{class:'confcard', id:'nubePanel', style:'margin-bottom:18px;'});
+  card.appendChild(el('h2',{class:'conftitle'},[txt('Copia en la nube')]));
+
+  function hint(texto){ return el('p',{class:'evalhint'},[txt(texto)]); }
+
+  if(nube.estado === 'desconocido'){
+    card.appendChild(hint('Comprobando…'));
+    return card;
+  }
+
+  if(nube.estado === 'error'){
+    card.appendChild(hint(nube.mensaje || 'La copia en la nube no está disponible ahora mismo.'));
+    card.appendChild(hint('Tus datos siguen guardados en este dispositivo; no se ha perdido nada. ' +
+      'Puedes volver a intentarlo cuando tengas conexión.'));
+    var reintentar = el('button',{class:'headbtn', type:'button', style:'margin-top:12px;'},[txt('Reintentar')]);
+    reintentar.addEventListener('click', function(){ nube.estado = 'desconocido'; nubeRefrescarPanel(); nubeArranque(); });
+    card.appendChild(reintentar);
+    return card;
+  }
+
+  if(nube.estado === 'sin-configurar'){
+    card.appendChild(hint('Aún no hay copia en la nube. Elige una contraseña para activarla: con ella ' +
+      'podrás entrar desde cualquier otro dispositivo y ver estos mismos registros. Guárdala bien — no se ' +
+      'puede recuperar, porque no se almacena en ningún sitio en texto legible.'));
+
+    var campo1 = el('div',{class:'evalfield', style:'max-width:320px; margin-top:14px;'});
+    campo1.appendChild(el('label',{},[txt('Contraseña (mínimo 8 caracteres)')]));
+    var inp1 = el('input',{type:'password', autocomplete:'new-password'});
+    campo1.appendChild(inp1);
+    card.appendChild(campo1);
+
+    var campo2 = el('div',{class:'evalfield', style:'max-width:320px; margin-top:10px;'});
+    campo2.appendChild(el('label',{},[txt('Repite la contraseña')]));
+    var inp2 = el('input',{type:'password', autocomplete:'new-password'});
+    campo2.appendChild(inp2);
+    card.appendChild(campo2);
+
+    var aviso = el('p',{class:'evalhint', style:'margin-top:8px;'});
+    card.appendChild(aviso);
+
+    var activar = el('button',{class:'headbtn primary', type:'button', style:'margin-top:12px;'},[txt('Activar copia en la nube')]);
+    activar.addEventListener('click', function(){
+      var p1 = inp1.value, p2 = inp2.value;
+      if(p1.length < 8){ aviso.textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
+      if(p1 !== p2){ aviso.textContent = 'Las dos contraseñas no coinciden.'; return; }
+      aviso.textContent = 'Activando…';
+      activar.disabled = true;
+      nubePeticion('registrar', {password:p1}).then(function(r){
+        activar.disabled = false;
+        if(r.ok){
+          nube.password = p1;
+          nubeEscribirLocal(CLAVE_PASSWORD_LOCAL, p1);
+          nube.estado = 'lista';
+          nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, new Date().toISOString());
+          nubeRefrescarPanel();
+          toast('Copia en la nube activada. Subiendo tus datos…');
+          nubeSubir().then(function(ok){ if(ok) toast('Tus datos ya están respaldados en la nube.'); });
+        } else if(r.codigo === 409){
+          aviso.textContent = 'Alguien ya puso una contraseña a esta copia. Si no fuiste tú, avísame.';
+          nube.estado = 'sin-vincular';
+          nubeRefrescarPanel();
+        } else {
+          aviso.textContent = (r.cuerpo && r.cuerpo.detalle) || 'No se pudo activar. Revisa tu conexión.';
+        }
+      }).catch(function(){
+        activar.disabled = false;
+        aviso.textContent = 'No se pudo conectar. Revisa tu conexión a internet.';
+      });
+    });
+    card.appendChild(activar);
+    return card;
+  }
+
+  if(nube.estado === 'sin-vincular'){
+    card.appendChild(hint('Ya hay una copia en la nube. Escribe tu contraseña para que este dispositivo ' +
+      'acceda a ella y se mantenga sincronizado.'));
+    if(nube.mensaje) card.appendChild(hint(nube.mensaje));
+
+    var campoV = el('div',{class:'evalfield', style:'max-width:320px; margin-top:14px;'});
+    campoV.appendChild(el('label',{},[txt('Contraseña')]));
+    var inpV = el('input',{type:'password', autocomplete:'current-password'});
+    campoV.appendChild(inpV);
+    card.appendChild(campoV);
+
+    var avisoV = el('p',{class:'evalhint', style:'margin-top:8px;'});
+    card.appendChild(avisoV);
+
+    var vincular = el('button',{class:'headbtn primary', type:'button', style:'margin-top:12px;'},[txt('Conectar este dispositivo')]);
+    function intentar(){
+      var p = inpV.value;
+      if(!p){ avisoV.textContent = 'Escribe la contraseña.'; return; }
+      avisoV.textContent = 'Comprobando…';
+      vincular.disabled = true;
+      nubePeticion('leer', {password:p}).then(function(r){
+        vincular.disabled = false;
+        if(r.codigo === 401){ avisoV.textContent = 'Contraseña incorrecta.'; return; }
+        if(!r.ok){ avisoV.textContent = 'No se pudo conectar. Inténtalo de nuevo.'; return; }
+        nube.password = p;
+        nubeEscribirLocal(CLAVE_PASSWORD_LOCAL, p);
+        nube.estado = 'lista';
+        nube.mensaje = '';
+        nubeRefrescarPanel();
+        toast('Dispositivo conectado. Sincronizando…');
+        nubeSincronizar();
+      }).catch(function(){
+        vincular.disabled = false;
+        avisoV.textContent = 'No se pudo conectar. Revisa tu conexión a internet.';
+      });
+    }
+    vincular.addEventListener('click', intentar);
+    inpV.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); intentar(); } });
+    card.appendChild(vincular);
+    return card;
+  }
+
+  // estado === 'lista'
+  card.appendChild(hint('Este dispositivo está conectado. Cada cambio que hagas se guarda aquí y se sube ' +
+    'automáticamente a la nube unos segundos después. Si pierdes el teléfono, entra desde otro dispositivo, ' +
+    'escribe la contraseña y tendrás todos tus registros.'));
+  var estadoLinea = nube.ocupada
+    ? 'Sincronizando…'
+    : (nube.ultimaSync ? 'Última sincronización: ' + new Date(nube.ultimaSync).toLocaleString() : 'Sin sincronizar todavía.');
+  card.appendChild(el('p',{class:'evalhint', style:'margin-top:10px;'},[txt(estadoLinea)]));
+  if(nube.mensaje) card.appendChild(hint(nube.mensaje));
+
+  var acciones = el('div',{style:'display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;'});
+  var sincronizar = el('button',{class:'headbtn', type:'button'},[txt('Sincronizar ahora')]);
+  sincronizar.disabled = !!nube.ocupada;
+  sincronizar.addEventListener('click', function(){ nubeSincronizar(); });
+  acciones.appendChild(sincronizar);
+
+  var desconectar = el('button',{class:'headbtn', type:'button'},[txt('Desconectar este dispositivo')]);
+  desconectar.addEventListener('click', function(){
+    if(!confirm('Este dispositivo dejará de sincronizar. Tus datos seguirán aquí y también en la nube. ¿Continuar?')) return;
+    nube.password = null;
+    nubeEscribirLocal(CLAVE_PASSWORD_LOCAL, null);
+    nube.estado = 'sin-vincular';
+    nubeRefrescarPanel();
+    toast('Dispositivo desconectado de la nube.');
+  });
+  acciones.appendChild(desconectar);
+  card.appendChild(acciones);
+
+  return card;
+}
+
 function buildConfiguracionView(){
   var main = el('main',{class:'view configview'});
+  main.appendChild(buildNubePanel());
   var card = el('div',{class:'confcard'});
 
   card.appendChild(el('h2',{class:'conftitle'},[txt('Elongación máxima segura para banda elástica')]));
@@ -6643,6 +6793,218 @@ function dosificacionATexto(){
   return lines.join('\n');
 }
 
+// ==================== COPIA EN LA NUBE ====================
+// El teléfono deja de ser el único sitio donde viven los datos. La app sigue guardando en el
+// dispositivo igual que antes (así funciona sin internet y al instante); además sube una copia
+// al servidor, de donde cualquier otro dispositivo la puede bajar escribiendo la contraseña.
+// Si no hay internet, o la nube falla, o la contraseña no está puesta, la app funciona
+// exactamente como siempre: la sincronización nunca bloquea nada.
+
+// Las seis cosas que la app guarda. Son las que se suben y se bajan.
+var CLAVES_SINCRONIZABLES = ['mi-rutina','videos-ejemplo','configuracion-banda',
+  'evaluacion-entrenamiento','dosificacion-entrenamiento','historial-entrenamiento'];
+var CLAVE_PASSWORD_LOCAL = 'biblioteca-ejercicios:nube-password';
+var CLAVE_MODIFICADO_LOCAL = 'biblioteca-ejercicios:nube-modificado';
+var CLAVE_RESPALDO_PREVIO = 'biblioteca-ejercicios:respaldo-antes-de-sincronizar';
+
+var nube = {
+  password: null,
+  estado: 'desconocido', // desconocido | sin-configurar | sin-vincular | lista | error
+  ultimaSync: null,
+  mensaje: '',
+  ocupada: false,
+  aplicandoRemoto: false, // evita que bajar datos dispare una subida en cadena
+  temporizador: null
+};
+
+function nubeLeerLocal(clave){
+  try{ return localStorage.getItem(clave); }catch(e){ return null; }
+}
+function nubeEscribirLocal(clave, valor){
+  try{ if(valor === null) localStorage.removeItem(clave); else localStorage.setItem(clave, valor); }catch(e){}
+}
+
+function nubePeticion(accion, extra){
+  var opciones;
+  if(accion === 'estado'){
+    opciones = {method:'GET'};
+  } else {
+    var cuerpo = {accion:accion};
+    Object.keys(extra || {}).forEach(function(k){ cuerpo[k] = extra[k]; });
+    opciones = {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo)};
+  }
+  var url = '/api/datos' + (accion === 'estado' ? '?accion=estado' : '');
+  return fetch(url, opciones).then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(j){
+      return {ok: r.ok, codigo: r.status, cuerpo: j};
+    });
+  });
+}
+
+// Lee el estado actual de los datos del dispositivo a través de la misma capa que usa el
+// resto de la app, para que funcione igual aquí que en el entorno donde se creó el archivo.
+function nubeFotoLocal(){
+  return Promise.all(CLAVES_SINCRONIZABLES.map(function(clave){
+    return window.storage.get(clave, false).then(function(res){
+      return {clave: clave, valor: (res && res.value) ? res.value : null};
+    }).catch(function(){ return {clave: clave, valor: null}; });
+  })).then(function(pares){
+    var datos = {};
+    pares.forEach(function(p){ if(p.valor !== null) datos[p.clave] = p.valor; });
+    return datos;
+  });
+}
+
+// Antes de pisar los datos del dispositivo con los de la nube se guarda una copia de lo que
+// había. Si una sincronización sale mal, nada se pierde en silencio.
+function nubeAplicarRemoto(datos){
+  return nubeFotoLocal().then(function(antes){
+    nubeEscribirLocal(CLAVE_RESPALDO_PREVIO, JSON.stringify({cuando:new Date().toISOString(), datos:antes}));
+    nube.aplicandoRemoto = true;
+    var ops = CLAVES_SINCRONIZABLES.filter(function(c){
+      return Object.prototype.hasOwnProperty.call(datos, c);
+    }).map(function(clave){
+      return window.storage.set(clave, datos[clave], false).catch(function(){});
+    });
+    return Promise.all(ops);
+  }).then(function(){
+    // Recargar en memoria lo que acaba de cambiar en disco y repintar.
+    return Promise.all([loadRoutine(), loadVideos(), loadEvaluacion(),
+      loadDosificacion(), loadHistorial(), loadConfiguracion()]);
+  }).then(function(){
+    nube.aplicandoRemoto = false;
+    renderAll();
+  }).catch(function(){
+    nube.aplicandoRemoto = false;
+  });
+}
+
+function nubeSubir(){
+  if(!nube.password) return Promise.resolve(false);
+  nube.ocupada = true;
+  return nubeFotoLocal().then(function(datos){
+    var marca = nubeLeerLocal(CLAVE_MODIFICADO_LOCAL) || new Date().toISOString();
+    return nubePeticion('guardar', {password: nube.password, datos: datos, actualizado: marca,
+      dispositivo: (navigator.platform || 'dispositivo')});
+  }).then(function(r){
+    nube.ocupada = false;
+    if(r.ok){
+      nube.estado = 'lista';
+      nube.ultimaSync = new Date().toISOString();
+      nube.mensaje = '';
+    } else if(r.codigo === 401){
+      nube.estado = 'sin-vincular';
+      nube.mensaje = 'La contraseña guardada ya no es válida.';
+    } else {
+      nube.estado = 'error';
+      nube.mensaje = (r.cuerpo && r.cuerpo.detalle) || 'No se pudo subir la copia.';
+    }
+    nubeRefrescarPanel();
+    return r.ok;
+  }).catch(function(){
+    // Sin internet: no es un fallo que deba molestar; se reintenta al siguiente cambio.
+    nube.ocupada = false;
+    nube.estado = 'error';
+    nube.mensaje = 'Sin conexión. Los datos están guardados en este dispositivo.';
+    nubeRefrescarPanel();
+    return false;
+  });
+}
+
+// Cada cambio marca la hora y programa una subida. Se agrupan los cambios seguidos (escribir
+// en un campo dispara un guardado por tecla) para no hacer una petición por pulsación.
+function nubeMarcarCambio(){
+  if(nube.aplicandoRemoto) return;
+  nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, new Date().toISOString());
+  if(!nube.password) return;
+  if(nube.temporizador) clearTimeout(nube.temporizador);
+  nube.temporizador = setTimeout(function(){ nube.temporizador = null; nubeSubir(); }, 2500);
+}
+
+// Se envuelve el guardado para que todas las llamadas que ya existen en la app (son más de
+// veinte repartidas por el código) disparen también la subida, sin tener que tocarlas una a una.
+(function(){
+  if(!window.storage || window.storage.__envuelto) return;
+  var setOriginal = window.storage.set.bind(window.storage);
+  window.storage.set = function(clave, valor, flag){
+    var p = setOriginal(clave, valor, flag);
+    if(CLAVES_SINCRONIZABLES.indexOf(clave) !== -1) nubeMarcarCambio();
+    return p;
+  };
+  window.storage.__envuelto = true;
+})();
+
+// Decide quién manda al arrancar: si la copia de la nube es más reciente que el último cambio
+// hecho en este dispositivo, se baja; si no, se sube la de aquí.
+function nubeSincronizar(){
+  if(!nube.password) return Promise.resolve();
+  nube.ocupada = true;
+  nubeRefrescarPanel();
+  return nubePeticion('leer', {password: nube.password}).then(function(r){
+    nube.ocupada = false;
+    if(r.codigo === 401){
+      nube.estado = 'sin-vincular';
+      nube.mensaje = 'La contraseña guardada ya no es válida.';
+      nubeRefrescarPanel();
+      return;
+    }
+    if(!r.ok){
+      nube.estado = 'error';
+      nube.mensaje = (r.cuerpo && r.cuerpo.detalle) || 'No se pudo consultar la nube.';
+      nubeRefrescarPanel();
+      return;
+    }
+    nube.estado = 'lista';
+    var remoto = r.cuerpo;
+    if(remoto.vacio || !remoto.datos){ return nubeSubir(); } // la nube está vacía: sube lo de aquí
+    var localMarca = nubeLeerLocal(CLAVE_MODIFICADO_LOCAL);
+    if(localMarca && remoto.actualizado && localMarca > remoto.actualizado){
+      return nubeSubir(); // aquí hay cambios más nuevos
+    }
+    if(remoto.actualizado && remoto.actualizado !== localMarca){
+      return nubeAplicarRemoto(remoto.datos).then(function(){
+        nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, remoto.actualizado);
+        nube.ultimaSync = new Date().toISOString();
+        toast('Datos actualizados desde la nube.');
+        nubeRefrescarPanel();
+      });
+    }
+    nube.ultimaSync = new Date().toISOString();
+    nubeRefrescarPanel();
+  }).catch(function(){
+    nube.ocupada = false;
+    nube.estado = 'error';
+    nube.mensaje = 'Sin conexión. Los datos están guardados en este dispositivo.';
+    nubeRefrescarPanel();
+  });
+}
+
+function nubeArranque(){
+  nube.password = nubeLeerLocal(CLAVE_PASSWORD_LOCAL);
+  return nubePeticion('estado').then(function(r){
+    if(!r.ok){
+      nube.estado = 'error';
+      nube.mensaje = (r.cuerpo && r.cuerpo.detalle) || 'La copia en la nube no está disponible.';
+      nubeRefrescarPanel();
+      return;
+    }
+    if(!r.cuerpo.configurada){ nube.estado = 'sin-configurar'; nubeRefrescarPanel(); return; }
+    if(!nube.password){ nube.estado = 'sin-vincular'; nubeRefrescarPanel(); return; }
+    return nubeSincronizar();
+  }).catch(function(){
+    nube.estado = 'error';
+    nube.mensaje = 'Sin conexión con la nube. La app funciona con los datos de este dispositivo.';
+    nubeRefrescarPanel();
+  });
+}
+
+function nubeRefrescarPanel(){
+  var cont = document.getElementById('nubePanel');
+  if(!cont) return;
+  var fresco = buildNubePanel();
+  cont.replaceWith(fresco);
+}
+
 // ==================== INTERACCIÓN GLOBAL ====================
 
 // ---------- ATAJOS DE TECLADO ----------
@@ -6742,8 +7104,8 @@ function montarBotonArriba(){
 
 // ---------- INIT ----------
 Promise.all([loadRoutine(), loadVideos(), loadEvaluacion(), loadDosificacion(), loadHistorial(), loadConfiguracion()])
-  .then(function(){ renderAll(); montarBotonArriba(); })
-  .catch(function(){ renderAll(); montarBotonArriba(); });
+  .then(function(){ renderAll(); montarBotonArriba(); nubeArranque(); })
+  .catch(function(){ renderAll(); montarBotonArriba(); nubeArranque(); });
 
 })();
 </script>
