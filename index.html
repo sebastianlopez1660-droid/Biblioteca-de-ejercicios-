@@ -5848,6 +5848,9 @@ function buildConfiguracionView(){
   card.appendChild(defaultField);
 
   main.appendChild(card);
+  main.appendChild(el('p',{class:'evalhint', style:'margin-top:16px;'},[
+    txt('Versión de la app: ' + VERSION_APP)
+  ]));
   return main;
 }
 
@@ -6799,6 +6802,11 @@ function dosificacionATexto(){
 // al servidor, de donde cualquier otro dispositivo la puede bajar escribiendo la contraseña.
 // Si no hay internet, o la nube falla, o la contraseña no está puesta, la app funciona
 // exactamente como siempre: la sincronización nunca bloquea nada.
+
+// Marca de versión visible en Config. Sirve para saber de un vistazo si el dispositivo está
+// ejecutando la versión actual o una copia vieja guardada en la caché del navegador — algo
+// que ya ha costado varias idas y venidas intentando adivinarlo.
+var VERSION_APP = '2026-10-04 · copia en la nube';
 
 // Las seis cosas que la app guarda. Son las que se suben y se bajan.
 var CLAVES_SINCRONIZABLES = ['mi-rutina','videos-ejemplo','configuracion-banda',
