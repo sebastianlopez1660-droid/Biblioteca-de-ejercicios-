@@ -657,6 +657,11 @@ main.results{flex:1; min-width:0; padding:20px 24px 60px;}
 button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-action:manipulation;}
 .card{outline-offset:2px;}
 
+/* En el Historial las filas de botones (descargar, importar, editar, eliminar…) no cabían en
+   una pantalla de móvil y estiraban la página de lado. Aquí sí pueden saltar de línea; fuera del
+   Historial .rowactions se queda como estaba, para no alterar la tabla de Evaluación. */
+#historialMain .rowactions{flex-wrap:wrap;}
+
 /* Botón para vaciar la búsqueda sin tener que borrar carácter a carácter. */
 .searchwrap input{padding-right:52px;}
 .searchclear{
@@ -1956,8 +1961,17 @@ function obtenerOCrearPerfil(nombre){
 // Guarda una "foto" completa del estado actual (evaluación, rutina y dosificación) en el
 // historial del perfil correspondiente a la persona evaluada actualmente.
 function guardarEntradaHistorial(){
-  var nombrePersona = (evaluacion && evaluacion.persona && evaluacion.persona.nombre) ? evaluacion.persona.nombre : '';
-  var perfil = obtenerOCrearPerfil(nombrePersona);
+  // Mientras se edita un registro, el PDF se genera pero no se crea otro registro: si no, cada
+  // corrección de un registro antiguo dejaría un duplicado con fecha de hoy.
+  if(editandoRegistro()) return null;
+  var perfil = perfilActivo();
+  if(!perfil){
+    var nombrePersona = (evaluacion && evaluacion.persona && evaluacion.persona.nombre) ? evaluacion.persona.nombre : '';
+    perfil = obtenerOCrearPerfil(nombrePersona);
+    // Lo que está en pantalla pasa a ser de esta persona, salvo que ya tuviera su propia
+    // evaluación en curso guardada (no se pisa sin preguntar).
+    if(trabajoVacioDe(perfil.trabajo)) historial.perfilActivoId = perfil.id;
+  }
   var entrada = {
     id: uidHistorial(),
     fecha: new Date().toISOString(),
@@ -1972,12 +1986,326 @@ function guardarEntradaHistorial(){
 function eliminarEntradaHistorial(perfilId, entradaId){
   var perfil = historial.perfiles.filter(function(p){ return p.id === perfilId; })[0];
   if(!perfil) return;
+  // Si justo ese registro se está editando, se abandona la edición antes de borrarlo.
+  var ed = editandoRegistro();
+  if(ed && ed.perfilId === perfilId && ed.entradaId === entradaId) salirEdicionRegistro(false);
   perfil.entradas = perfil.entradas.filter(function(e){ return e.id !== entradaId; });
   saveHistorial();
 }
 function eliminarPerfilHistorial(perfilId){
+  var ed = editandoRegistro();
+  if(ed && ed.perfilId === perfilId) historial.edicionRegistro = null;
   historial.perfiles = historial.perfiles.filter(function(p){ return p.id !== perfilId; });
+  // Borrar a la persona activa borra también su evaluación en curso, que es lo que hay en pantalla.
+  if(historial.perfilActivoId === perfilId){
+    historial.perfilActivoId = null;
+    evaluacion = evaluacionPorDefecto();
+    dosificacion = nuevaDosificacionPorDefecto();
+    saveEvaluacion();
+    saveDosificacion();
+  }
   saveHistorial();
+}
+
+// ==================== PERFILES CON ESPACIO DE TRABAJO PROPIO ====================
+// Antes había una sola evaluación y una sola dosificación "en curso", compartidas por todos:
+// para evaluar a otra persona había que pisar la anterior. Ahora cada perfil guarda la suya en
+// perfil.trabajo = {evaluacion, dosificacion}.
+//
+// Para no reescribir las vistas de Evaluación y Dosificación (cientos de líneas que trabajan
+// sobre las variables globales `evaluacion` y `dosificacion`), esas globales siguen siendo lo
+// que se ve y se edita en pantalla, y pertenecen a la persona activa (historial.perfilActivoId).
+// Cambiar de persona = guardar las globales en el perfil que se deja y cargar las del nuevo.
+// Mientras una persona está activa, sus globales mandan y su perfil.trabajo puede estar
+// atrasado; por eso todo lo que lee el trabajo de un perfil pasa por trabajoDePerfil().
+//
+// Editar un registro del historial reutiliza el mismo mecanismo: la evaluación en curso de la
+// persona se aparta en su perfil.trabajo, el registro se carga en pantalla, y al guardar o
+// cancelar se devuelve todo a su sitio (historial.edicionRegistro marca ese modo, y como se
+// guarda junto al resto, sobrevive a una recarga a mitad de la edición).
+
+function clonar(x){ return JSON.parse(JSON.stringify(x)); }
+function perfilPorId(id){
+  if(!id || !historial) return null;
+  return historial.perfiles.filter(function(p){ return p.id === id; })[0] || null;
+}
+function buscarPerfilPorNombre(nombre){
+  var clave = nombrePerfilNormalizado(nombre);
+  return historial.perfiles.filter(function(p){ return nombrePerfilNormalizado(p.nombre) === clave; })[0] || null;
+}
+function perfilActivo(){ return historial ? perfilPorId(historial.perfilActivoId) : null; }
+function editandoRegistro(){ return (historial && historial.edicionRegistro) || null; }
+function entradaPorIds(perfilId, entradaId){
+  var p = perfilPorId(perfilId);
+  return p ? (p.entradas.filter(function(e){ return e.id === entradaId; })[0] || null) : null;
+}
+
+// ¿Tiene ejercicios evaluados o dosificados? Es lo que se muestra como "en curso".
+function trabajoConEjercicios(t){
+  if(!t) return false;
+  var ev = t.evaluacion || {};
+  var evaluados = (ev.sesiones || []).some(function(s){
+    return (s.ejercicios || []).some(function(ej){ return (ej.ejercicio || '').trim(); });
+  });
+  return evaluados || !!(t.dosificacion && t.dosificacion.items && t.dosificacion.items.length);
+}
+// "Vacío" = nada que valga la pena conservar. El nombre no cuenta: todo perfil tiene uno, y
+// contarlo haría que ningún perfil pareciera vacío. Sí cuentan los demás datos de la persona.
+function trabajoVacioDe(t){
+  if(!t) return true;
+  var per = (t.evaluacion && t.evaluacion.persona) || {};
+  if((per.fecha || '').trim() || (per.evaluador || '').trim() || String(per.pesoCorporal || '').trim()) return false;
+  return !trabajoConEjercicios(t);
+}
+// Lo de pantalla sin persona asignada: aquí el nombre sí cuenta, porque si se escribió alguno,
+// eso ya es información de alguien que no hay que perder.
+function trabajoEnPantallaVacio(){
+  if(((evaluacion.persona && evaluacion.persona.nombre) || '').trim()) return false;
+  return trabajoVacioDe({evaluacion: evaluacion, dosificacion: dosificacion});
+}
+
+function trabajoPorDefectoPara(nombre){
+  var ev = evaluacionPorDefecto();
+  ev.persona.nombre = nombre || '';
+  return {evaluacion: ev, dosificacion: nuevaDosificacionPorDefecto()};
+}
+// El trabajo vigente de un perfil: el de pantalla si es la persona activa (y no se está editando
+// un registro); si no, el que tiene guardado.
+function trabajoDePerfil(perfil){
+  if(perfil && historial.perfilActivoId === perfil.id && !editandoRegistro()){
+    return {evaluacion: evaluacion, dosificacion: dosificacion};
+  }
+  return (perfil && perfil.trabajo) || trabajoPorDefectoPara(perfil ? perfil.nombre : '');
+}
+function guardarTrabajoEnPerfilActivo(){
+  var p = perfilActivo();
+  if(!p || editandoRegistro()) return;
+  p.trabajo = {evaluacion: clonar(evaluacion), dosificacion: clonar(dosificacion)};
+}
+// Carga un trabajo en pantalla con las mismas correcciones que aplican loadEvaluacion y
+// loadDosificacion a los datos guardados con versiones anteriores.
+function cargarTrabajoEnPantalla(t){
+  evaluacion = clonar(t.evaluacion || evaluacionPorDefecto());
+  dosificacion = clonar(t.dosificacion || nuevaDosificacionPorDefecto());
+  if(!evaluacion.persona) evaluacion.persona = {nombre:'', fecha:'', evaluador:'', pesoCorporal:''};
+  if(evaluacion.persona.pesoCorporal == null) evaluacion.persona.pesoCorporal = '';
+  if(!evaluacion.sesiones || !evaluacion.sesiones.length) evaluacion.sesiones = [nuevaSesionEval('Sesión 1')];
+  if(!dosificacion.staging) dosificacion.staging = nuevoStagingDosif();
+  if(!dosificacion.items) dosificacion.items = [];
+  if(typeof dosificacion.encadenado !== 'boolean') dosificacion.encadenado = true;
+}
+function guardarPantalla(){
+  saveHistorial();
+  saveEvaluacion();
+  saveDosificacion();
+}
+
+function nombreDisponible(nombre, exceptoId){
+  var clave = nombrePerfilNormalizado(nombre);
+  return !historial.perfiles.some(function(p){ return p.id !== exceptoId && nombrePerfilNormalizado(p.nombre) === clave; });
+}
+function nombreUnico(base){
+  var n = base, i = 2;
+  while(!nombreDisponible(n)){ n = base + ' (' + i + ')'; i++; }
+  return n;
+}
+function nuevoPerfil(nombre, trabajo){
+  var p = {id: uidHistorial(), nombre: nombre, creado: new Date().toISOString(), entradas: [], trabajo: trabajo || null};
+  historial.perfiles.push(p);
+  return p;
+}
+
+// Lo que hay en pantalla sin persona asignada nunca se descarta: se guarda en un perfil. Si ya
+// existe una persona con ese nombre y no tiene evaluación en curso (el caso típico: solo tenía
+// registros en el historial), es suyo; si no, va a un perfil propio con nombre sin repetir.
+function asignarTrabajoSuelto(){
+  if(perfilActivo() || trabajoEnPantallaVacio()) return null;
+  var base = ((evaluacion.persona && evaluacion.persona.nombre) || '').trim() || 'Sin nombre';
+  var existente = buscarPerfilPorNombre(base);
+  var p = (existente && trabajoVacioDe(existente.trabajo)) ? existente : nuevoPerfil(nombreUnico(base));
+  p.trabajo = {evaluacion: clonar(evaluacion), dosificacion: clonar(dosificacion)};
+  p.trabajo.evaluacion.persona.nombre = p.nombre;
+  return p;
+}
+
+function activarPerfil(id){
+  if(editandoRegistro()){
+    toast('Primero guarda o cancela la edición del registro.');
+    return false;
+  }
+  var destino = perfilPorId(id);
+  if(!destino) return false;
+  if(historial.perfilActivoId === id) return true;
+  if(perfilActivo()) guardarTrabajoEnPerfilActivo();
+  else asignarTrabajoSuelto();
+  cargarTrabajoEnPantalla(destino.trabajo || trabajoPorDefectoPara(destino.nombre));
+  evaluacion.persona.nombre = destino.nombre;
+  historial.perfilActivoId = id;
+  guardarPantalla();
+  return true;
+}
+
+// Devuelve un mensaje de error, o null si salió bien.
+function crearPersona(nombre){
+  nombre = (nombre || '').trim();
+  if(!nombre) return 'Escribe un nombre.';
+  if(editandoRegistro()) return 'Primero guarda o cancela la edición del registro.';
+  if(!nombreDisponible(nombre)) return 'Ya existe una persona con ese nombre.';
+  // Si se estaba escribiendo una evaluación sin persona asignada, lo natural es que sea de la
+  // persona que se está creando; pero se pregunta, porque podría ser de otra.
+  if(!perfilActivo() && !trabajoEnPantallaVacio()){
+    var esSuya = confirm('Hay una evaluación sin asignar en pantalla. ¿Es de ' + nombre + '?\n\n' +
+      'Aceptar: queda como la evaluación de ' + nombre + '.\n' +
+      'Cancelar: se guarda aparte y ' + nombre + ' empieza en blanco.');
+    if(esSuya){
+      var p0 = nuevoPerfil(nombre);
+      evaluacion.persona.nombre = nombre;
+      historial.perfilActivoId = p0.id;
+      guardarPantalla();
+      return null;
+    }
+  }
+  var p = nuevoPerfil(nombre, trabajoPorDefectoPara(nombre));
+  activarPerfil(p.id);
+  return null;
+}
+
+// Cambiar el nombre también lo corrige dentro de su evaluación en curso y de cada registro, para
+// que los PDF que se regeneren desde el historial salgan con el nombre bueno.
+function renombrarPerfil(id, nuevo){
+  nuevo = (nuevo || '').trim();
+  if(!nuevo) return 'El nombre no puede quedar vacío.';
+  var p = perfilPorId(id);
+  if(!p) return 'No se encontró la persona.';
+  if(!nombreDisponible(nuevo, id)) return 'Ya existe otra persona con ese nombre.';
+  p.nombre = nuevo;
+  if(p.trabajo && p.trabajo.evaluacion && p.trabajo.evaluacion.persona) p.trabajo.evaluacion.persona.nombre = nuevo;
+  p.entradas.forEach(function(e){
+    if(e.evaluacion && e.evaluacion.persona) e.evaluacion.persona.nombre = nuevo;
+  });
+  var ed = editandoRegistro();
+  if(historial.perfilActivoId === id || (ed && ed.perfilId === id)){
+    evaluacion.persona.nombre = nuevo;
+    saveEvaluacion();
+  }
+  saveHistorial();
+  return null;
+}
+
+// El campo "Nombre" de la evaluación también gobierna el perfil: con una persona activa, la
+// renombra; sin ninguna, escribir un nombre nuevo crea su perfil.
+function alCambiarNombrePersona(valor){
+  if(editandoRegistro()) return;
+  var v = (valor || '').trim();
+  var p = perfilActivo();
+  if(p){
+    if(v === p.nombre) return;
+    var err = renombrarPerfil(p.id, v);
+    if(err){
+      evaluacion.persona.nombre = p.nombre;
+      saveEvaluacion();
+      toast(err);
+    } else {
+      toast('Nombre actualizado: ' + v);
+    }
+    renderEvalOnly();
+    return;
+  }
+  if(!v) return;
+  var existente = buscarPerfilPorNombre(v);
+  if(!existente){
+    var nuevo = nuevoPerfil(v);
+    historial.perfilActivoId = nuevo.id;
+    saveHistorial();
+    toast('Perfil creado para ' + v + '.');
+  } else if(trabajoVacioDe(existente.trabajo)){
+    historial.perfilActivoId = existente.id;
+    evaluacion.persona.nombre = existente.nombre;
+    guardarPantalla();
+    toast('Evaluación asignada a ' + existente.nombre + '.');
+  } else {
+    toast('Ya existe ' + existente.nombre + ' con una evaluación en curso. Ábrela con "Cambiar de persona".');
+    return;
+  }
+  renderEvalOnly();
+}
+
+function entrarEdicionRegistro(perfilId, entradaId){
+  if(editandoRegistro()){ toast('Ya estás editando un registro: guárdalo o cancélalo primero.'); return false; }
+  var e = entradaPorIds(perfilId, entradaId);
+  if(!e) return false;
+  // Antes de reemplazar la pantalla con el registro, lo que había queda a salvo.
+  if(perfilActivo()) guardarTrabajoEnPerfilActivo();
+  else asignarTrabajoSuelto();
+  historial.perfilActivoId = perfilId;
+  historial.edicionRegistro = {perfilId: perfilId, entradaId: entradaId};
+  cargarTrabajoEnPantalla({evaluacion: e.evaluacion, dosificacion: e.dosificacion});
+  guardarPantalla();
+  return true;
+}
+function salirEdicionRegistro(guardar){
+  var ed = editandoRegistro();
+  if(!ed) return;
+  var p = perfilPorId(ed.perfilId);
+  var e = entradaPorIds(ed.perfilId, ed.entradaId);
+  if(guardar && e){
+    e.evaluacion = clonar(evaluacion);
+    e.dosificacion = clonar(dosificacion);
+    if(p && e.evaluacion.persona) e.evaluacion.persona.nombre = p.nombre;
+    e.editado = new Date().toISOString();
+  }
+  historial.edicionRegistro = null;
+  if(p){
+    cargarTrabajoEnPantalla(p.trabajo || trabajoPorDefectoPara(p.nombre));
+    evaluacion.persona.nombre = p.nombre;
+  } else {
+    historial.perfilActivoId = null;
+    cargarTrabajoEnPantalla(trabajoPorDefectoPara(''));
+  }
+  guardarPantalla();
+}
+
+// Se ejecuta tras cargar los datos (al arrancar y al bajarlos de la nube). Repara referencias
+// rotas y, la primera vez, migra la evaluación única de antes a un perfil.
+function asegurarPerfiles(){
+  if(!historial) return;
+  // Lo que se escribe aquí es una reparación automática, no algo que haya hecho el usuario: no
+  // debe marcar el dispositivo como "modificado ahora". Si lo marcara, un teléfono recién
+  // estrenado (vacío) parecería más reciente que la nube y subiría su vacío encima de los datos
+  // reales. La marca se suspende mientras dura la reparación.
+  nube.escrituraAutomatica = true;
+  try{ asegurarPerfilesSinMarcar(); } finally { nube.escrituraAutomatica = false; }
+}
+function asegurarPerfilesSinMarcar(){
+  var cambio = false;
+  if(historial.perfilActivoId && !perfilPorId(historial.perfilActivoId)){
+    historial.perfilActivoId = null;
+    cambio = true;
+  }
+  var ed = editandoRegistro();
+  if(ed && !entradaPorIds(ed.perfilId, ed.entradaId)){
+    historial.edicionRegistro = null;
+    var pd = perfilPorId(ed.perfilId);
+    cargarTrabajoEnPantalla(pd && pd.trabajo ? pd.trabajo : trabajoPorDefectoPara(pd ? pd.nombre : ''));
+    saveEvaluacion();
+    saveDosificacion();
+    cambio = true;
+  }
+  if(!historial.perfilesMigrados){
+    historial.perfilesMigrados = true;
+    cambio = true;
+    if(!historial.perfilActivoId && !trabajoEnPantallaVacio()){
+      var p = asignarTrabajoSuelto();
+      if(p){
+        historial.perfilActivoId = p.id;
+        if(evaluacion.persona.nombre !== p.nombre){
+          evaluacion.persona.nombre = p.nombre;
+          saveEvaluacion();
+        }
+      }
+    }
+  }
+  if(cambio) saveHistorial();
 }
 
 // ---- Copia de seguridad del historial (exportar/importar) ----
@@ -2004,11 +2332,13 @@ function construirBackupHistorial(perfiles){
   return { tipo:'backup-historial-entrenamiento', version:1, exportado: new Date().toISOString(), perfiles: perfiles };
 }
 function exportarPerfilJSON(perfil){
+  guardarTrabajoEnPerfilActivo(); // la copia lleva la evaluación en curso al día, no la última guardada
   var backup = construirBackupHistorial([perfil]);
   var nombreArchivo = 'historial-' + nombrePerfilNormalizado(perfil.nombre).replace(/\s+/g,'-') + '-backup.json';
   descargarArchivoTexto(nombreArchivo, JSON.stringify(backup, null, 2), 'application/json');
 }
 function exportarHistorialCompletoJSON(){
+  guardarTrabajoEnPerfilActivo();
   var backup = construirBackupHistorial(historial.perfiles);
   descargarArchivoTexto('historial-entrenamiento-backup-completo.json', JSON.stringify(backup, null, 2), 'application/json');
 }
@@ -2027,7 +2357,8 @@ function fusionarPerfilesImportados(perfilesImportados){
         id: pImportado.id || uidHistorial(),
         nombre: pImportado.nombre,
         creado: pImportado.creado || new Date().toISOString(),
-        entradas: entradasImportadas
+        entradas: entradasImportadas,
+        trabajo: pImportado.trabajo || null
       });
       añadidos++;
       entradasNuevas += entradasImportadas.length;
@@ -4333,7 +4664,11 @@ function buildPersonaForm(){
   var card = el('div',{class:'evalcard'});
   card.appendChild(el('h3',{},[txt('Datos de la persona evaluada')]));
   var grid = el('div',{class:'evalgrid3'});
-  grid.appendChild(evalField('Nombre', evaluacion.persona.nombre, function(v){ evaluacion.persona.nombre = v; saveEvaluacion(); }));
+  var campoNombre = evalField('Nombre', evaluacion.persona.nombre, function(v){ evaluacion.persona.nombre = v; saveEvaluacion(); });
+  // Al terminar de escribir (no en cada tecla, que crearía un perfil por letra) el nombre
+  // renombra a la persona activa o, si no hay ninguna, crea su perfil.
+  campoNombre.querySelector('input').addEventListener('change', function(e){ alCambiarNombrePersona(e.target.value); });
+  grid.appendChild(campoNombre);
   grid.appendChild(evalField('Fecha de inicio', evaluacion.persona.fecha, function(v){ evaluacion.persona.fecha = v; saveEvaluacion(); }, {type:'date'}));
   grid.appendChild(evalField('Evaluador', evaluacion.persona.evaluador, function(v){ evaluacion.persona.evaluador = v; saveEvaluacion(); }));
   grid.appendChild(evalField('Peso corporal (kg)', evaluacion.persona.pesoCorporal, function(v){
@@ -5146,8 +5481,96 @@ function renderEvaluacionTabla(doc){
   }
 }
 
+// Barra "Persona evaluada", arriba de Evaluación y Dosificación: deja claro de quién es lo que
+// hay en pantalla y permite cambiar de persona o crear una nueva. Mientras se edita un registro
+// del historial se convierte en el aviso de ese modo, con Guardar y Cancelar.
+function buildPerfilBar(){
+  var bar = el('div',{class:'evalcard', style:'padding:14px 16px;'});
+  var ed = editandoRegistro();
+  if(ed){
+    var pe = perfilPorId(ed.perfilId), en = entradaPorIds(ed.perfilId, ed.entradaId);
+    bar.appendChild(el('div',{style:'font-size:13.5px; line-height:1.55;'},[
+      txt('✏️ Estás editando el registro del '),
+      el('b',{},[txt(en ? fechaLegible(en.fecha) : '—')]),
+      txt(' de '),
+      el('b',{},[txt(pe ? pe.nombre : '—')]),
+      txt('. Su evaluación en curso está guardada aparte y no cambia hasta que salgas de aquí.')
+    ]));
+    var accionesEd = el('div',{style:'display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;'});
+    var guardarEd = el('button',{class:'headbtn primary', type:'button'},[txt('Guardar cambios en el registro')]);
+    guardarEd.addEventListener('click', function(){
+      salirEdicionRegistro(true);
+      toast('Registro actualizado.');
+      state.view = 'historial';
+      state.historialPerfilId = ed.perfilId;
+      renderAll();
+    });
+    var cancelarEd = el('button',{class:'headbtn', type:'button'},[txt('Cancelar')]);
+    cancelarEd.addEventListener('click', function(){
+      if(!confirm('¿Descartar los cambios hechos en este registro?')) return;
+      salirEdicionRegistro(false);
+      state.view = 'historial';
+      state.historialPerfilId = ed.perfilId;
+      renderAll();
+    });
+    accionesEd.appendChild(guardarEd);
+    accionesEd.appendChild(cancelarEd);
+    bar.appendChild(accionesEd);
+    return bar;
+  }
+
+  var p = perfilActivo();
+  var fila = el('div',{style:'display:flex; align-items:center; gap:12px; flex-wrap:wrap;'});
+  fila.appendChild(el('div',{style:'flex:1 1 200px; min-width:0;'},[
+    el('div',{class:'histfechalabel'},[txt('Persona evaluada')]),
+    el('div',{class:'histentradafecha', style:'margin-top:3px;'},[txt(p ? p.nombre : 'Ninguna seleccionada')])
+  ]));
+
+  var otros = historial.perfiles.filter(function(x){ return !p || x.id !== p.id; })
+    .slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); });
+  if(otros.length){
+    var sel = customSelect({
+      options: [{value:'', label: p ? 'Cambiar de persona…' : 'Elegir persona…'}].concat(
+        otros.map(function(x){ return {value:x.id, label:x.nombre}; })),
+      value: '',
+      onChange: function(id){
+        if(!id) return;
+        if(activarPerfil(id)){
+          var px = perfilActivo();
+          toast('Ahora estás con ' + (px ? px.nombre : 'otra persona') + '.');
+          renderAll();
+        }
+      }
+    });
+    sel.style.flex = '1 1 200px';
+    sel.style.maxWidth = '280px';
+    fila.appendChild(sel);
+  }
+
+  var nuevaBtn = el('button',{class:'headbtn', type:'button'},[txt('+ Nueva persona')]);
+  nuevaBtn.addEventListener('click', function(){
+    var nombre = prompt('Nombre de la nueva persona:');
+    if(nombre === null) return;
+    var err = crearPersona(nombre);
+    if(err){ toast(err); return; }
+    toast('Persona creada: ' + nombre.trim() + '.');
+    renderAll();
+  });
+  fila.appendChild(nuevaBtn);
+  bar.appendChild(fila);
+
+  if(!p){
+    bar.appendChild(el('div',{class:'evalhint', style:'margin-top:10px;'},[txt(
+      'Elige una persona o crea una nueva — también puedes escribir su nombre en "Datos de la persona". ' +
+      'Cada persona guarda su propia evaluación y dosificación, y su historial.'
+    )]));
+  }
+  return bar;
+}
+
 function buildEvaluacionView(){
   var main = el('main',{class:'results evalmain', id:'evalMain'});
+  main.appendChild(buildPerfilBar());
 
   var intro = el('div',{class:'evalintro'});
   intro.appendChild(el('p',{},[txt(
@@ -5214,6 +5637,9 @@ function buildEvaluacionView(){
   resetBtn.addEventListener('click', function(){
     if(!confirm('¿Vaciar toda la evaluación registrada?')) return;
     evaluacion = evaluacionPorDefecto();
+    // La evaluación se vacía, pero sigue siendo de la misma persona.
+    var pReset = perfilActivo();
+    if(pReset && !editandoRegistro()) evaluacion.persona.nombre = pReset.nombre;
     saveEvaluacion();
     renderEvalOnly();
   });
@@ -5230,6 +5656,7 @@ function buildEvaluacionView(){
 function buildDosificacionView(){
   ensureDosifDatalist();
   var main = el('main',{class:'results evalmain', id:'dosifMain'});
+  main.appendChild(buildPerfilBar());
   var st = dosificacion.staging;
 
   var intro = el('div',{class:'evalintro'});
@@ -5854,15 +6281,70 @@ function buildConfiguracionView(){
   return main;
 }
 
+function botonNuevaPersonaHistorial(){
+  var btn = el('button',{class:'headbtn', type:'button'},[txt('+ Nueva persona')]);
+  btn.addEventListener('click', function(){
+    var nombre = prompt('Nombre de la nueva persona:');
+    if(nombre === null) return;
+    var err = crearPersona(nombre);
+    if(err){ toast(err); return; }
+    var p = perfilActivo();
+    toast('Persona creada: ' + nombre.trim() + '.');
+    state.historialPerfilId = p ? p.id : null;
+    renderAll();
+  });
+  return btn;
+}
+
+// Lo que la persona tiene "en curso": su evaluación por sesiones y su dosificación, con accesos
+// directos para editarlas. Se lee con trabajoDePerfil(), así que si es la persona en pantalla
+// muestra lo último aunque aún no se haya cambiado de persona.
+function buildTrabajoEnCursoCard(perfil){
+  var card = el('div',{class:'evalcard'});
+  var ed = editandoRegistro();
+  card.appendChild(el('h3',{},[txt('Evaluación y dosificación en curso')]));
+
+  if(ed && ed.perfilId === perfil.id){
+    card.appendChild(el('div',{class:'evalhint'},[txt(
+      'Ahora mismo estás editando uno de sus registros. Su evaluación en curso está guardada aparte y ' +
+      'vuelve a la pantalla al guardar o cancelar esa edición.'
+    )]));
+    var volver = el('button',{class:'headbtn', type:'button', style:'margin-top:12px;'},[txt('Ir a la edición del registro')]);
+    volver.addEventListener('click', function(){ state.view = 'evaluacion'; renderAll(); window.scrollTo(0,0); });
+    card.appendChild(volver);
+    return card;
+  }
+
+  var t = trabajoDePerfil(perfil);
+  if(!trabajoConEjercicios(t)){
+    card.appendChild(el('div',{class:'evalhint'},[txt('Todavía no tiene ejercicios evaluados ni dosificados.')]));
+  } else {
+    card.appendChild(buildHistorialEntradaDetalle({evaluacion: t.evaluacion, dosificacion: t.dosificacion}, {sinRutina: true}));
+  }
+
+  var acciones = el('div',{style:'display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;'});
+  [['Editar evaluación','evaluacion'],['Editar dosificación','dosificacion']].forEach(function(par){
+    var b = el('button',{class:'headbtn' + (par[1] === 'evaluacion' ? ' primary' : ''), type:'button'},[txt(par[0])]);
+    b.addEventListener('click', function(){
+      if(!activarPerfil(perfil.id)) return;
+      state.view = par[1];
+      renderAll();
+      window.scrollTo(0,0);
+    });
+    acciones.appendChild(b);
+  });
+  card.appendChild(acciones);
+  return card;
+}
+
 function buildHistorialView(){
   var main = el('main',{class:'results evalmain', id:'historialMain'});
 
   var intro = el('div',{class:'evalintro'});
   intro.appendChild(el('p',{},[txt(
-    'Cada vez que generas el "PDF entrenador" desde Dosificación, se guarda automáticamente una copia ' +
-    'en el historial de la persona evaluada (agrupado por su nombre), con la evaluación, la rutina y la ' +
-    'prescripción completas de ese momento. Así puedes consultar la evolución de cada persona y volver a ' +
-    'descargar cualquier informe anterior.'
+    'Cada persona tiene su propia evaluación y dosificación en curso, y su historial. Cada vez que generas el ' +
+    '"PDF entrenador" desde Dosificación, se guarda un registro con todo lo de ese momento. Abre una persona ' +
+    'para ver o editar su evaluación, su dosificación, su nombre y cualquiera de sus registros.'
   )]));
   main.appendChild(intro);
 
@@ -5879,7 +6361,8 @@ function buildHistorialView(){
       'Ve a Evaluación, completa los datos de la persona, ajusta su Dosificación y pulsa "PDF entrenador" ' +
       'para generar el primer registro de su historial.'
     )]));
-    var emptyImportRow = el('div',{class:'rowactions', style:'margin-top:14px;'});
+    var emptyImportRow = el('div',{class:'rowactions', style:'margin-top:14px; justify-content:flex-start;'});
+    emptyImportRow.appendChild(botonNuevaPersonaHistorial());
     var emptyImportBtn = el('button',{class:'headbtn', title:'Restaura información desde un archivo .json exportado previamente desde aquí.'},[txt('⬆️ Importar copia de seguridad')]);
     emptyImportBtn.addEventListener('click', function(){ abrirSelectorImportarHistorial(); });
     emptyImportRow.appendChild(emptyImportBtn);
@@ -5900,6 +6383,7 @@ function buildHistorialView(){
     descargarTodoBtn.addEventListener('click', function(){ exportarHistorialCompletoJSON(); });
     var importarBtn = el('button',{class:'headbtn', title:'Restaura información desde un archivo .json exportado previamente desde aquí.'},[txt('⬆️ Importar copia de seguridad')]);
     importarBtn.addEventListener('click', function(){ abrirSelectorImportarHistorial(); });
+    backupActions.appendChild(botonNuevaPersonaHistorial());
     backupActions.appendChild(descargarTodoBtn);
     backupActions.appendChild(importarBtn);
     listHead.appendChild(backupActions);
@@ -5913,18 +6397,20 @@ function buildHistorialView(){
     perfiles.forEach(function(p){
       var ultima = p.entradas[0] ? fechaLegible(p.entradas[0].fecha) : '—';
       var item = el('div',{class:'histperfilcard'});
-      item.appendChild(el('div',{class:'histperfilnombre'},[txt(p.nombre)]));
+      var esActiva = historial.perfilActivoId === p.id;
+      item.appendChild(el('div',{class:'histperfilnombre'},[txt(p.nombre + (esActiva ? ' · en pantalla' : ''))]));
       item.appendChild(el('div',{class:'histperfilmeta'},[txt(
-        p.entradas.length + ' registro(s) · último: ' + ultima
+        p.entradas.length + ' registro(s) · último: ' + ultima +
+        (trabajoConEjercicios(trabajoDePerfil(p)) ? ' · evaluación en curso' : '')
       )]));
       var acciones = el('div',{class:'rowactions', style:'margin-top:10px; justify-content:flex-start;'});
-      var verBtn = el('button',{class:'minibtn'},[txt('Ver historial')]);
+      var verBtn = el('button',{class:'minibtn'},[txt('Abrir')]);
       verBtn.addEventListener('click', function(){ state.historialPerfilId = p.id; renderAll(); });
       var descargarBtn = el('button',{class:'minibtn', title:'Descarga el historial de esta persona como archivo .json (copia de seguridad).'},[txt('⬇️ Descargar')]);
       descargarBtn.addEventListener('click', function(){ exportarPerfilJSON(p); });
       var delBtn = el('button',{class:'minibtn danger'},[txt('Eliminar perfil')]);
       delBtn.addEventListener('click', function(){
-        if(confirm('¿Eliminar todo el historial de "' + p.nombre + '"? Esta acción no se puede deshacer.')){
+        if(confirm('¿Eliminar a "' + p.nombre + '" con todo lo suyo (evaluación y dosificación en curso, e historial)? Esta acción no se puede deshacer.')){
           eliminarPerfilHistorial(p.id);
           renderAll();
         }
@@ -5964,7 +6450,19 @@ function buildHistorialView(){
 
   var perfilCard = el('div',{class:'evalcard'});
   var perfilHead = el('div',{style:'display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;'});
-  perfilHead.appendChild(el('h3',{style:'margin:0;'},[txt(perfilSeleccionado.nombre + ' · ' + perfilSeleccionado.entradas.length + ' registro(s)')]));
+  var tituloPerfil = el('div',{style:'display:flex; align-items:center; gap:10px; flex-wrap:wrap;'});
+  tituloPerfil.appendChild(el('h3',{style:'margin:0;'},[txt(perfilSeleccionado.nombre + ' · ' + perfilSeleccionado.entradas.length + ' registro(s)')]));
+  var renombrarBtn = el('button',{class:'minibtn', type:'button', title:'Cambia el nombre de esta persona en todo: perfil, evaluación en curso y registros.'},[txt('✏️ Cambiar nombre')]);
+  renombrarBtn.addEventListener('click', function(){
+    var nuevo = prompt('Nuevo nombre para ' + perfilSeleccionado.nombre + ':', perfilSeleccionado.nombre);
+    if(nuevo === null) return;
+    var err = renombrarPerfil(perfilSeleccionado.id, nuevo);
+    if(err){ toast(err); return; }
+    toast('Nombre actualizado.');
+    renderAll();
+  });
+  tituloPerfil.appendChild(renombrarBtn);
+  perfilHead.appendChild(tituloPerfil);
 
   var compareActions = el('div',{class:'rowactions'});
   var descargarPerfilBtn = el('button',{class:'headbtn', title:'Descarga el historial de esta persona como archivo .json (copia de seguridad).'},[txt('⬇️ Descargar (JSON)')]);
@@ -6005,6 +6503,7 @@ function buildHistorialView(){
     }
   }
   perfilHead.appendChild(compareActions);
+  main.appendChild(buildTrabajoEnCursoCard(perfilSeleccionado));
   perfilCard.appendChild(perfilHead);
 
   if(state.historialComparando){
@@ -6042,7 +6541,8 @@ function buildHistorialView(){
     }
     headInfo.appendChild(el('div',{},[
       el('div',{class:'histentradafecha'},[txt(fechaLegible(entrada.fecha))]),
-      el('div',{class:'histentradaresumen'},[txt(resumenEntradaHistorial(entrada))])
+      el('div',{class:'histentradaresumen'},[txt(resumenEntradaHistorial(entrada) +
+        (entrada.editado ? ' · editado el ' + fechaLegible(entrada.editado) : ''))])
     ]));
     head.appendChild(headInfo);
     var headAcciones = el('div',{class:'rowactions'});
@@ -6063,7 +6563,15 @@ function buildHistorialView(){
         renderAll();
       }
     });
+    var editarEntradaBtn = el('button',{class:'minibtn', title:'Abre este registro en Evaluación para corregirlo.'},[txt('Editar')]);
+    editarEntradaBtn.addEventListener('click', function(){
+      if(!entrarEdicionRegistro(perfilSeleccionado.id, entrada.id)) return;
+      state.view = 'evaluacion';
+      renderAll();
+      window.scrollTo(0,0);
+    });
     headAcciones.appendChild(toggleBtn);
+    headAcciones.appendChild(editarEntradaBtn);
     headAcciones.appendChild(pdfBtn);
     headAcciones.appendChild(delEntradaBtn);
     head.appendChild(headAcciones);
@@ -6081,7 +6589,8 @@ function buildHistorialView(){
 
 // Detalle completo de una entrada del historial: datos de la persona, cada sesión evaluada
 // (con sus ejercicios y prescripción), la rutina guardada y cada dosificación registrada.
-function buildHistorialEntradaDetalle(entrada){
+function buildHistorialEntradaDetalle(entrada, opciones){
+  opciones = opciones || {};
   var det = el('div',{class:'histdetalle'});
 
   var persona = (entrada.evaluacion && entrada.evaluacion.persona) ? entrada.evaluacion.persona : {};
@@ -6115,7 +6624,7 @@ function buildHistorialEntradaDetalle(entrada){
   });
 
   var rutina = entrada.rutina || [];
-  det.appendChild(el('div',{class:'histdetallebloque'},[
+  if(!opciones.sinRutina) det.appendChild(el('div',{class:'histdetallebloque'},[
     el('div',{class:'histdetallelabel'},[txt('Rutina guardada (' + rutina.length + ')')]),
     el('div',{},[txt(rutina.length ? rutina.map(function(codigo){
       var d = exerciseByCodeOrName(codigo, null);
@@ -6806,7 +7315,7 @@ function dosificacionATexto(){
 // Marca de versión visible en Config. Sirve para saber de un vistazo si el dispositivo está
 // ejecutando la versión actual o una copia vieja guardada en la caché del navegador — algo
 // que ya ha costado varias idas y venidas intentando adivinarlo.
-var VERSION_APP = '2026-10-04 · copia en la nube';
+var VERSION_APP = '2026-10-04 · perfiles por persona';
 
 // Las seis cosas que la app guarda. Son las que se suben y se bajan.
 var CLAVES_SINCRONIZABLES = ['mi-rutina','videos-ejemplo','configuracion-banda',
@@ -6822,6 +7331,7 @@ var nube = {
   mensaje: '',
   ocupada: false,
   aplicandoRemoto: false, // evita que bajar datos dispare una subida en cadena
+  escrituraAutomatica: false, // reparaciones al arrancar: no son cambios del usuario
   temporizador: null
 };
 
@@ -6880,6 +7390,7 @@ function nubeAplicarRemoto(datos){
     return Promise.all([loadRoutine(), loadVideos(), loadEvaluacion(),
       loadDosificacion(), loadHistorial(), loadConfiguracion()]);
   }).then(function(){
+    asegurarPerfiles(); // aún con aplicandoRemoto activo: reparar no debe disparar otra subida
     nube.aplicandoRemoto = false;
     renderAll();
   }).catch(function(){
@@ -6922,7 +7433,7 @@ function nubeSubir(){
 // Cada cambio marca la hora y programa una subida. Se agrupan los cambios seguidos (escribir
 // en un campo dispara un guardado por tecla) para no hacer una petición por pulsación.
 function nubeMarcarCambio(){
-  if(nube.aplicandoRemoto) return;
+  if(nube.aplicandoRemoto || nube.escrituraAutomatica) return;
   nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, new Date().toISOString());
   if(!nube.password) return;
   if(nube.temporizador) clearTimeout(nube.temporizador);
@@ -6942,8 +7453,27 @@ function nubeMarcarCambio(){
   window.storage.__envuelto = true;
 })();
 
+// ¿La foto local no tiene nada que valga la pena? (ni personas, ni evaluación, ni dosificación,
+// ni rutina). Ante la duda —un dato que no se puede leer— se considera que sí tiene algo.
+function nubeFotoVacia(datos){
+  function leer(clave){ return datos[clave] ? JSON.parse(datos[clave]) : null; }
+  try{
+    var h = leer('historial-entrenamiento');
+    if(h && h.perfiles && h.perfiles.length) return false;
+    var ev = leer('evaluacion-entrenamiento');
+    if(ev && ((ev.persona && (ev.persona.nombre || '').trim()) || !trabajoVacioDe({evaluacion: ev}))) return false;
+    var d = leer('dosificacion-entrenamiento');
+    if(d && d.items && d.items.length) return false;
+    var r = leer('mi-rutina');
+    if(r && r.length) return false;
+    return true;
+  }catch(e){ return false; }
+}
+
 // Decide quién manda al arrancar: si la copia de la nube es más reciente que el último cambio
-// hecho en este dispositivo, se baja; si no, se sube la de aquí.
+// hecho en este dispositivo, se baja; si no, se sube la de aquí. Con una salvaguarda que no
+// depende de las marcas de tiempo: un dispositivo vacío nunca sube su vacío encima de una nube
+// con datos, siempre baja.
 function nubeSincronizar(){
   if(!nube.password) return Promise.resolve();
   nube.ocupada = true;
@@ -6965,20 +7495,23 @@ function nubeSincronizar(){
     nube.estado = 'lista';
     var remoto = r.cuerpo;
     if(remoto.vacio || !remoto.datos){ return nubeSubir(); } // la nube está vacía: sube lo de aquí
-    var localMarca = nubeLeerLocal(CLAVE_MODIFICADO_LOCAL);
-    if(localMarca && remoto.actualizado && localMarca > remoto.actualizado){
-      return nubeSubir(); // aquí hay cambios más nuevos
-    }
-    if(remoto.actualizado && remoto.actualizado !== localMarca){
-      return nubeAplicarRemoto(remoto.datos).then(function(){
-        nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, remoto.actualizado);
-        nube.ultimaSync = new Date().toISOString();
-        toast('Datos actualizados desde la nube.');
-        nubeRefrescarPanel();
-      });
-    }
-    nube.ultimaSync = new Date().toISOString();
-    nubeRefrescarPanel();
+    return nubeFotoLocal().then(function(local){
+      var localMarca = nubeLeerLocal(CLAVE_MODIFICADO_LOCAL);
+      var localVacio = nubeFotoVacia(local);
+      if(!localVacio && localMarca && remoto.actualizado && localMarca > remoto.actualizado){
+        return nubeSubir(); // aquí hay cambios más nuevos
+      }
+      if(localVacio || (remoto.actualizado && remoto.actualizado !== localMarca)){
+        return nubeAplicarRemoto(remoto.datos).then(function(){
+          nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, remoto.actualizado || new Date().toISOString());
+          nube.ultimaSync = new Date().toISOString();
+          toast('Datos actualizados desde la nube.');
+          nubeRefrescarPanel();
+        });
+      }
+      nube.ultimaSync = new Date().toISOString();
+      nubeRefrescarPanel();
+    });
   }).catch(function(){
     nube.ocupada = false;
     nube.estado = 'error';
@@ -7112,8 +7645,8 @@ function montarBotonArriba(){
 
 // ---------- INIT ----------
 Promise.all([loadRoutine(), loadVideos(), loadEvaluacion(), loadDosificacion(), loadHistorial(), loadConfiguracion()])
-  .then(function(){ renderAll(); montarBotonArriba(); nubeArranque(); })
-  .catch(function(){ renderAll(); montarBotonArriba(); nubeArranque(); });
+  .then(function(){ asegurarPerfiles(); renderAll(); montarBotonArriba(); nubeArranque(); })
+  .catch(function(){ asegurarPerfiles(); renderAll(); montarBotonArriba(); nubeArranque(); });
 
 })();
 </script>
