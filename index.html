@@ -702,6 +702,28 @@ button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-act
 @keyframes toastout{to{opacity:0; transform:translateY(12px);}}
 @media (max-width:880px){ .toaster{bottom:14px;} }
 
+/* Diálogos propios (confirmar, pedir un texto, avisar). Sustituyen a confirm(), prompt() y
+   avisar() del navegador: dentro de un artefacto de Claude esos tres no se muestran (confirm
+   devuelve "no" y prompt nada, al instante), y en el móvil los propios se ven mejor. */
+.dialogo-capa{
+  position:fixed; inset:0; z-index:460; background:rgba(9,7,7,.72); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px));
+}
+.dialogo{
+  background:var(--panel); border:1px solid var(--border); border-radius:14px;
+  width:100%; max-width:440px; padding:20px 20px 16px; animation:pop .16s ease-out;
+  box-shadow:0 20px 50px rgba(0,0,0,.6);
+}
+.dialogo h3{font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:600; margin:0 0 10px;}
+.dialogo p{margin:0 0 14px; font-size:13.5px; line-height:1.55; color:var(--text-dim); white-space:pre-line;}
+.dialogo input{
+  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+  border-radius:7px; padding:10px 12px; font-size:14px; font-family:'Inter',sans-serif; outline:none; margin-bottom:14px;
+}
+.dialogo input:focus{border-color:var(--accent-line);}
+.dialogo-acciones{display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;}
+
 /* Volver arriba tras recorrer listas largas. */
 .totop{
   position:fixed; right:18px; bottom:18px; z-index:60; width:42px; height:42px; border-radius:50%;
@@ -2187,18 +2209,21 @@ function activarPerfil(id){
   return true;
 }
 
-// Devuelve un mensaje de error, o null si salió bien.
+// Resuelve con un mensaje de error, o con null si salió bien.
 function crearPersona(nombre){
   nombre = (nombre || '').trim();
-  if(!nombre) return 'Escribe un nombre.';
-  if(editandoRegistro()) return 'Primero guarda o cancela la edición del registro.';
-  if(!nombreDisponible(nombre)) return 'Ya existe una persona con ese nombre.';
+  if(!nombre) return Promise.resolve('Escribe un nombre.');
+  if(editandoRegistro()) return Promise.resolve('Primero guarda o cancela la edición del registro.');
+  if(!nombreDisponible(nombre)) return Promise.resolve('Ya existe una persona con ese nombre.');
   // Si se estaba escribiendo una evaluación sin persona asignada, lo natural es que sea de la
-  // persona que se está creando; pero se pregunta, porque podría ser de otra.
-  if(!perfilActivo() && !trabajoEnPantallaVacio()){
-    var esSuya = confirm('Hay una evaluación sin asignar en pantalla. ¿Es de ' + nombre + '?\n\n' +
-      'Aceptar: queda como la evaluación de ' + nombre + '.\n' +
-      'Cancelar: se guarda aparte y ' + nombre + ' empieza en blanco.');
+  // persona que se está creando; pero se pregunta, porque podría ser de otra. Ninguna de las
+  // dos respuestas pierde nada: si no es suya, se guarda aparte.
+  var pregunta = (!perfilActivo() && !trabajoEnPantallaVacio())
+    ? confirmar('Hay una evaluación sin asignar en pantalla. Si no es de ' + nombre + ', se guarda aparte y ' +
+        nombre + ' empieza en blanco.', {titulo: '¿Es de ' + nombre + '?', aceptar: 'Sí, es de ' + nombre, cancelar: 'No, guardarla aparte'})
+    : Promise.resolve(false);
+  return pregunta.then(function(esSuya){
+    if(!nombreDisponible(nombre)) return 'Ya existe una persona con ese nombre.';
     if(esSuya){
       var p0 = nuevoPerfil(nombre);
       evaluacion.persona.nombre = nombre;
@@ -2206,10 +2231,10 @@ function crearPersona(nombre){
       guardarPantalla();
       return null;
     }
-  }
-  var p = nuevoPerfil(nombre, trabajoPorDefectoPara(nombre));
-  activarPerfil(p.id);
-  return null;
+    var p = nuevoPerfil(nombre, trabajoPorDefectoPara(nombre));
+    activarPerfil(p.id);
+    return null;
+  });
 }
 
 // Cambiar el nombre también lo corrige dentro de su evaluación en curso y de cada registro, para
@@ -2354,12 +2379,33 @@ function asegurarPerfilesSinMarcar(){
   if(cambio) saveHistorial();
 }
 
+// ---- Descargas dentro de un artefacto de Claude ----
+// Ahí un enlace con "download" no hace nada: el archivo se entrega a través de la propia
+// página de Claude, que pide confirmación antes de guardarlo.
+var ES_ARTEFACTO = !!(window.claude && typeof window.claude.use === 'function');
+function guardarEnArtefacto(nombreArchivo, datos){
+  window.claude.use('downloads').then(function(descargas){
+    if(!descargas){ avisar('Esta vista no permite descargar archivos. Abre la biblioteca dentro de Claude.'); return; }
+    return descargas.save({filename: nombreArchivo, data: datos}).catch(function(e){
+      var codigo = e && e.code;
+      if(codigo === 'declined') return;
+      if(codigo === 'rate_limited'){ toast('Ya hay una descarga esperando confirmación.'); return; }
+      avisar('No se pudo descargar el archivo.');
+    });
+  }).catch(function(){ avisar('No se pudo descargar el archivo.'); });
+}
+function guardarPdf(doc, nombreArchivo){
+  if(ES_ARTEFACTO){ guardarEnArtefacto(nombreArchivo, doc.output('blob')); return; }
+  doc.save(nombreArchivo);
+}
+
 // ---- Copia de seguridad del historial (exportar/importar) ----
 // Permite descargar el historial (de una persona o completo) como archivo .json, y volver a
 // importarlo más adelante para restaurar la información si se pierde (cambio de dispositivo,
 // borrado accidental, etc.). El archivo importado se fusiona con el historial actual: si una
 // persona ya existe (mismo nombre), se añaden solo los registros que todavía no estén guardados.
 function descargarArchivoTexto(nombreArchivo, contenido, mime){
+  if(ES_ARTEFACTO){ guardarEnArtefacto(nombreArchivo, contenido); return; }
   try{
     var blob = new Blob([contenido], {type: mime || 'application/json'});
     var url = URL.createObjectURL(blob);
@@ -2371,7 +2417,7 @@ function descargarArchivoTexto(nombreArchivo, contenido, mime){
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }catch(e){
-    alert('No se pudo generar el archivo de descarga.');
+    avisar('No se pudo generar el archivo de descarga.');
   }
 }
 function construirBackupHistorial(perfiles){
@@ -2425,18 +2471,18 @@ function fusionarPerfilesImportados(perfilesImportados){
 function importarHistorialDesdeTexto(texto){
   var datos;
   try{ datos = JSON.parse(texto); }catch(e){
-    alert('El archivo seleccionado no es un JSON válido.');
+    avisar('El archivo seleccionado no es un JSON válido.');
     return;
   }
   var perfilesImportados = null;
   if(datos && Array.isArray(datos.perfiles)) perfilesImportados = datos.perfiles;
   else if(Array.isArray(datos)) perfilesImportados = datos;
   if(!perfilesImportados || !perfilesImportados.length){
-    alert('El archivo no contiene un historial reconocible. Usa un archivo exportado desde el botón "Descargar" de esta misma sección.');
+    avisar('El archivo no contiene un historial reconocible. Usa un archivo exportado desde el botón "Descargar" de esta misma sección.');
     return;
   }
   var resultado = fusionarPerfilesImportados(perfilesImportados);
-  alert('Importación completada: ' + resultado.añadidos + ' persona(s) nueva(s), ' +
+  avisar('Importación completada: ' + resultado.añadidos + ' persona(s) nueva(s), ' +
     resultado.actualizados + ' persona(s) actualizada(s), ' +
     resultado.entradasNuevas + ' registro(s) nuevo(s) en total.');
   renderAll();
@@ -2451,7 +2497,7 @@ function abrirSelectorImportarHistorial(){
     if(!file) return;
     var reader = new FileReader();
     reader.onload = function(){ importarHistorialDesdeTexto(reader.result); };
-    reader.onerror = function(){ alert('No se pudo leer el archivo seleccionado.'); };
+    reader.onerror = function(){ avisar('No se pudo leer el archivo seleccionado.'); };
     reader.readAsText(file);
   });
   document.body.appendChild(input);
@@ -2575,36 +2621,46 @@ function extraerEvaluacionesDeDatos(datos){
 function importarEvaluacionDesdeTexto(texto){
   var datos;
   try{ datos = JSON.parse(texto); }catch(e){
-    alert('El archivo seleccionado no es un JSON válido.');
+    avisar('El archivo seleccionado no es un JSON válido.');
     return;
   }
   var candidatas = extraerEvaluacionesDeDatos(datos);
   if(!candidatas.length){
-    alert('El archivo no contiene una evaluación reconocible. Usa un archivo .json descargado con el botón "Descargar evaluación (.json)" de esta misma sección, o una copia de seguridad del Historial.');
+    avisar('El archivo no contiene una evaluación reconocible. Usa un archivo .json descargado con el botón "Descargar evaluación (.json)" de esta misma sección, o una copia de seguridad del Historial.');
     return;
   }
-  var elegida = candidatas[0];
+  var eleccion;
   if(candidatas.length > 1){
     var lista = candidatas.map(function(c, i){ return (i + 1) + ') ' + c.etiqueta; }).join('\n');
-    var resp = prompt('El archivo contiene ' + candidatas.length + ' evaluaciones guardadas.\nEscribe el número de la que quieras importar:\n\n' + lista, '1');
-    if(resp === null) return;
-    var i = parseInt(String(resp).trim(), 10);
-    if(!i || i < 1 || i > candidatas.length){
-      alert('No se importó nada: el número indicado no corresponde a ninguna de las evaluaciones del archivo.');
-      return;
-    }
-    elegida = candidatas[i - 1];
+    eleccion = pedirTexto('El archivo contiene ' + candidatas.length + ' evaluaciones guardadas. Escribe el número de la que quieras importar:\n\n' + lista,
+      '1', {titulo: '¿Qué evaluación importar?', aceptar: 'Importar'}).then(function(resp){
+      if(resp === null) return null;
+      var i = parseInt(String(resp).trim(), 10);
+      if(!i || i < 1 || i > candidatas.length){
+        avisar('No se importó nada: el número indicado no corresponde a ninguna de las evaluaciones del archivo.');
+        return null;
+      }
+      return candidatas[i - 1];
+    });
+  } else {
+    eleccion = Promise.resolve(candidatas[0]);
   }
+  eleccion.then(function(elegida){
+    if(elegida) importarEvaluacionElegida(elegida);
+  });
+}
+function importarEvaluacionElegida(elegida){
   var nueva = sanearEvaluacionImportada(elegida.evaluacion);
   if(!nueva){
-    alert('La evaluación del archivo no tiene un formato válido.');
+    avisar('La evaluación del archivo no tiene un formato válido.');
     return;
   }
-  var mensajeFinal = 'Evaluación importada (' + elegida.etiqueta + ').';
-  if(evaluacionTieneDatos()){
-    var reemplazar = confirm('Ya hay una evaluación registrada en la app.\n\n' +
-      'Aceptar = REEMPLAZARLA por la importada.\n' +
-      'Cancelar = AÑADIR las sesiones importadas al final de la evaluación actual.');
+  var decision = evaluacionTieneDatos()
+    ? confirmar('Ya hay una evaluación registrada. Puedes reemplazarla por la importada, o añadir las sesiones ' +
+        'importadas al final de la actual.', {titulo: 'Importar evaluación', aceptar: 'Reemplazarla', cancelar: 'Añadir sesiones'})
+    : Promise.resolve(true);
+  decision.then(function(reemplazar){
+    var mensajeFinal = 'Evaluación importada (' + elegida.etiqueta + ').';
     if(reemplazar){
       evaluacion = nueva;
     } else {
@@ -2614,13 +2670,11 @@ function importarEvaluacionDesdeTexto(texto){
       });
       mensajeFinal = 'Se añadieron ' + nueva.sesiones.length + ' sesión(es) importada(s) a la evaluación actual.';
     }
-  } else {
-    evaluacion = nueva;
-  }
-  saveEvaluacion();
-  if(state.view === 'evaluacion' && document.getElementById('evalMain')) renderEvalOnly();
-  else renderAll();
-  alert(mensajeFinal);
+    saveEvaluacion();
+    if(state.view === 'evaluacion' && document.getElementById('evalMain')) renderEvalOnly();
+    else renderAll();
+    avisar(mensajeFinal);
+  });
 }
 function abrirSelectorImportarEvaluacion(){
   var input = document.createElement('input');
@@ -2632,7 +2686,7 @@ function abrirSelectorImportarEvaluacion(){
     if(!file) return;
     var reader = new FileReader();
     reader.onload = function(){ importarEvaluacionDesdeTexto(reader.result); };
-    reader.onerror = function(){ alert('No se pudo leer el archivo seleccionado.'); };
+    reader.onerror = function(){ avisar('No se pudo leer el archivo seleccionado.'); };
     reader.readAsText(file);
   });
   document.body.appendChild(input);
@@ -3105,6 +3159,75 @@ function toast(mensaje, opciones){
   toaster.appendChild(box);
   setTimeout(cerrar, opciones.duracion || (opciones.accion ? 6000 : 2600));
   return cerrar;
+}
+
+// ---------- DIÁLOGOS PROPIOS ----------
+// confirm(), prompt() y avisar() del navegador no sirven dentro de un artefacto de Claude
+// (confirm devuelve false y prompt null sin mostrar nada), así que borrar, reiniciar, crear o
+// renombrar personas quedarían inutilizables. Estos diálogos van dentro de la propia página y
+// funcionan igual en los dos sitios. Devuelven promesas: confirmar → true/false,
+// pedirTexto → el texto o null si se cancela.
+function abrirDialogo(opts){
+  return new Promise(function(resolve){
+    var previo = document.activeElement;
+    var conCampo = !!opts.campo;
+    var cancelable = opts.cancelar !== false;
+    var capa = el('div',{class:'dialogo-capa'});
+    var caja = el('div',{class:'dialogo', role:'dialog', 'aria-modal':'true', 'aria-label': opts.titulo || 'Aviso'});
+    if(opts.titulo) caja.appendChild(el('h3',{},[txt(opts.titulo)]));
+    if(opts.mensaje) caja.appendChild(el('p',{},[txt(opts.mensaje)]));
+    var campo = null;
+    if(conCampo){
+      campo = el('input',{type:'text', id:'dialogoCampo', autocomplete:'off', 'aria-label': opts.titulo || opts.mensaje || 'Texto'});
+      campo.value = opts.campo.valor || '';
+      caja.appendChild(campo);
+    }
+    var acciones = el('div',{class:'dialogo-acciones'});
+    var resultadoCancelar = conCampo ? null : false;
+    function cerrar(valor){
+      document.removeEventListener('keydown', onKey, true);
+      capa.remove();
+      if(previo && document.contains(previo) && previo.focus) previo.focus();
+      resolve(valor);
+    }
+    if(cancelable){
+      var bCancelar = el('button',{type:'button', class:'headbtn'},[txt(opts.cancelar || 'Cancelar')]);
+      bCancelar.addEventListener('click', function(){ cerrar(resultadoCancelar); });
+      acciones.appendChild(bCancelar);
+    }
+    var bAceptar = el('button',{type:'button', class:'headbtn primary'},[txt(opts.aceptar || 'Aceptar')]);
+    bAceptar.addEventListener('click', function(){ cerrar(conCampo ? campo.value : true); });
+    acciones.appendChild(bAceptar);
+    caja.appendChild(acciones);
+    capa.appendChild(caja);
+    capa.addEventListener('click', function(e){ if(e.target === capa && cancelable) cerrar(resultadoCancelar); });
+    // En fase de captura, para que Esc cierre este diálogo y no la capa que haya debajo.
+    function onKey(e){
+      if(e.key === 'Escape'){
+        e.preventDefault(); e.stopPropagation();
+        cerrar(cancelable ? resultadoCancelar : true);
+      } else if(e.key === 'Enter' && conCampo && document.activeElement === campo){
+        e.preventDefault(); e.stopPropagation();
+        cerrar(campo.value);
+      } else if(e.key === 'Tab'){
+        atraparTab(caja, e);
+      }
+    }
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(capa);
+    if(campo){ campo.focus(); campo.select(); } else { bAceptar.focus(); }
+  });
+}
+function confirmar(mensaje, opts){
+  opts = opts || {};
+  return abrirDialogo({titulo: opts.titulo, mensaje: mensaje, aceptar: opts.aceptar, cancelar: opts.cancelar || 'Cancelar'});
+}
+function pedirTexto(mensaje, valor, opts){
+  opts = opts || {};
+  return abrirDialogo({titulo: opts.titulo, mensaje: mensaje, campo: {valor: valor || ''}, aceptar: opts.aceptar, cancelar: 'Cancelar'});
+}
+function avisar(mensaje){
+  abrirDialogo({mensaje: mensaje, aceptar: 'Entendido', cancelar: false});
 }
 
 // ---------- CONSERVAR LA POSICIÓN DE LECTURA ----------
@@ -3803,13 +3926,13 @@ function buildVideoSection(d){
     var url = videoLinks[d.codigo];
     if(!url){ showForm(''); return; }
 
-    var embed = toEmbedUrl(url);
+    var embed = ES_ARTEFACTO ? null : toEmbedUrl(url);
     if(embed){
       var wrap = el('div',{class:'videoembed'});
       var iframe = el('iframe',{src:embed, allowfullscreen:'true', allow:'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture'});
       wrap.appendChild(iframe);
       content.appendChild(wrap);
-    } else if(isDirectVideo(url)){
+    } else if(!ES_ARTEFACTO && isDirectVideo(url)){
       var wrap2 = el('div',{class:'videoembed'});
       var vid = el('video',{src:url, controls:'true'});
       wrap2.appendChild(vid);
@@ -4256,7 +4379,7 @@ function agregarMarcaDeAguaPDF(doc){
 
 function exportRutinaPDF(){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var jsPDF = window.jspdf.jsPDF;
@@ -4365,7 +4488,7 @@ function exportRutinaPDF(){
     doc.setTextColor(SUBINK[0],SUBINK[1],SUBINK[2]);
     doc.text('Aún no has añadido ejercicios a tu rutina.', margin, y);
     agregarMarcaDeAguaPDF(doc);
-    doc.save('mi-rutina.pdf');
+    guardarPdf(doc, 'mi-rutina.pdf');
     return;
   }
 
@@ -4452,7 +4575,7 @@ function exportRutinaPDF(){
   });
 
   agregarMarcaDeAguaPDF(doc);
-  doc.save('mi-rutina.pdf');
+  guardarPdf(doc, 'mi-rutina.pdf');
 }
 
 // Contexto del cajón abierto: foco previo y escucha de teclado (Esc y atrapar el Tab).
@@ -4570,7 +4693,7 @@ function buildDrawer(){
         exportRutinaPDF();
       }catch(e){
         ok = false;
-        alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.');
+        avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.');
       }
       pdfBtn.textContent = original;
       pdfBtn.disabled = false;
@@ -5258,14 +5381,14 @@ function evaluacionATexto(){
 
 function exportEvaluacionPDF(){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
   renderEvaluacionTabla(doc);
   agregarMarcaDeAguaPDF(doc);
-  doc.save('evaluacion-entrenamiento.pdf');
+  guardarPdf(doc, 'evaluacion-entrenamiento.pdf');
 }
 
 // Dibuja, dentro del "doc" ya creado (debe estar en orientación landscape), la tabla completa
@@ -5553,11 +5676,13 @@ function buildPerfilBar(){
     });
     var cancelarEd = el('button',{class:'headbtn', type:'button'},[txt('Cancelar')]);
     cancelarEd.addEventListener('click', function(){
-      if(!confirm('¿Descartar los cambios hechos en este registro?')) return;
-      salirEdicionRegistro(false);
-      state.view = 'historial';
-      state.historialPerfilId = ed.perfilId;
-      renderAll();
+      confirmar('Los cambios hechos en este registro se perderán.', {titulo: '¿Descartar los cambios?', aceptar: 'Descartar', cancelar: 'Seguir editando'}).then(function(si){
+        if(!si) return;
+        salirEdicionRegistro(false);
+        state.view = 'historial';
+        state.historialPerfilId = ed.perfilId;
+        renderAll();
+      });
     });
     accionesEd.appendChild(guardarEd);
     accionesEd.appendChild(cancelarEd);
@@ -5595,12 +5720,14 @@ function buildPerfilBar(){
 
   var nuevaBtn = el('button',{class:'headbtn', type:'button'},[txt('+ Nueva persona')]);
   nuevaBtn.addEventListener('click', function(){
-    var nombre = prompt('Nombre de la nueva persona:');
-    if(nombre === null) return;
-    var err = crearPersona(nombre);
-    if(err){ toast(err); return; }
-    toast('Persona creada: ' + nombre.trim() + '.');
-    renderAll();
+    pedirTexto('', '', {titulo: 'Nombre de la nueva persona', aceptar: 'Crear'}).then(function(nombre){
+      if(nombre === null) return;
+      return crearPersona(nombre).then(function(err){
+        if(err){ toast(err); return; }
+        toast('Persona creada: ' + nombre.trim() + '.');
+        renderAll();
+      });
+    });
   });
   fila.appendChild(nuevaBtn);
   bar.appendChild(fila);
@@ -5663,7 +5790,7 @@ function buildEvaluacionView(){
       try{
         exportEvaluacionPDF();
       }catch(e){
-        alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.');
+        avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.');
       }
       pdfBtn.textContent = original;
       pdfBtn.disabled = false;
@@ -5681,13 +5808,15 @@ function buildEvaluacionView(){
 
   var resetBtn = el('button',{class:'headbtn'},[txt('Reiniciar evaluación')]);
   resetBtn.addEventListener('click', function(){
-    if(!confirm('¿Vaciar toda la evaluación registrada?')) return;
-    evaluacion = evaluacionPorDefecto();
-    // La evaluación se vacía, pero sigue siendo de la misma persona.
-    var pReset = perfilActivo();
-    if(pReset && !editandoRegistro()) evaluacion.persona.nombre = pReset.nombre;
-    saveEvaluacion();
-    renderEvalOnly();
+    confirmar('Se borran todas sus sesiones y ejercicios. Esta acción no se puede deshacer.', {titulo: '¿Vaciar toda la evaluación?', aceptar: 'Vaciar', cancelar: 'Cancelar'}).then(function(si){
+      if(!si) return;
+      evaluacion = evaluacionPorDefecto();
+      // La evaluación se vacía, pero sigue siendo de la misma persona.
+      var pReset = perfilActivo();
+      if(pReset && !editandoRegistro()) evaluacion.persona.nombre = pReset.nombre;
+      saveEvaluacion();
+      renderEvalOnly();
+    });
   });
   actions.appendChild(resetBtn);
   main.appendChild(actions);
@@ -6040,7 +6169,7 @@ function buildDosificacionView(){
     pdfEntrenadorBtn.disabled = true;
     setTimeout(function(){
       try{ exportEntrenadorPDF(); }
-      catch(e){ alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
+      catch(e){ avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
       pdfEntrenadorBtn.textContent = original;
       pdfEntrenadorBtn.disabled = false;
     }, 30);
@@ -6112,7 +6241,7 @@ function buildDosifDrawer(){
     pdfBtn.disabled = true;
     setTimeout(function(){
       try{ exportDosificacionPDF(); }
-      catch(e){ alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
+      catch(e){ avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
       pdfBtn.textContent = original;
       pdfBtn.disabled = false;
     }, 30);
@@ -6165,6 +6294,12 @@ function buildNubePanel(){
     var reintentar = el('button',{class:'headbtn', type:'button', style:'margin-top:12px;'},[txt('Reintentar')]);
     reintentar.addEventListener('click', function(){ nube.estado = 'desconocido'; nubeRefrescarPanel(); nubeArranque(); });
     card.appendChild(reintentar);
+    return card;
+  }
+
+  if(ES_ARTEFACTO && nube.estado === 'sin-configurar'){
+    card.appendChild(hint('Esta vista no tiene acceso a tu cuenta de Claude, así que los datos solo se guardan ' +
+      'en este navegador. Abre la biblioteca dentro de Claude, con tu sesión iniciada, para que se respalden en tu cuenta.'));
     return card;
   }
 
@@ -6264,7 +6399,11 @@ function buildNubePanel(){
   }
 
   // estado === 'lista'
-  card.appendChild(hint('Este dispositivo está conectado. Cada cambio que hagas se guarda aquí y se sube ' +
+  if(ES_ARTEFACTO){
+    card.appendChild(hint('Tus datos se guardan en tu cuenta de Claude, en un espacio privado que solo ves tú. ' +
+      'Cada cambio se sube unos segundos después; desde cualquier dispositivo en el que abras esta biblioteca ' +
+      'con tu cuenta tendrás los mismos registros.'));
+  } else card.appendChild(hint('Este dispositivo está conectado. Cada cambio que hagas se guarda aquí y se sube ' +
     'automáticamente a la nube unos segundos después. Si pierdes el teléfono, entra desde otro dispositivo, ' +
     'escribe la contraseña y tendrás todos tus registros.'));
   var estadoLinea = nube.ocupada
@@ -6281,22 +6420,90 @@ function buildNubePanel(){
 
   var desconectar = el('button',{class:'headbtn', type:'button'},[txt('Desconectar este dispositivo')]);
   desconectar.addEventListener('click', function(){
-    if(!confirm('Este dispositivo dejará de sincronizar. Tus datos seguirán aquí y también en la nube. ¿Continuar?')) return;
-    nube.password = null;
-    nubeEscribirLocal(CLAVE_PASSWORD_LOCAL, null);
-    nube.estado = 'sin-vincular';
-    nubeRefrescarPanel();
-    toast('Dispositivo desconectado de la nube.');
+    confirmar('Este dispositivo dejará de sincronizar. Tus datos seguirán aquí y también en la nube.', {titulo: '¿Desconectar este dispositivo?', aceptar: 'Desconectar', cancelar: 'Cancelar'}).then(function(si){
+      if(!si) return;
+      nube.password = null;
+      nubeEscribirLocal(CLAVE_PASSWORD_LOCAL, null);
+      nube.estado = 'sin-vincular';
+      nubeRefrescarPanel();
+      toast('Dispositivo desconectado de la nube.');
+    });
   });
-  acciones.appendChild(desconectar);
+  if(!ES_ARTEFACTO) acciones.appendChild(desconectar);
   card.appendChild(acciones);
 
   return card;
 }
 
+// ---- Copia completa: las seis cosas que guarda la app, en un solo archivo ----
+// Sirve para llevarse todo de un sitio a otro (de la versión web al artefacto de Claude, o al
+// revés) y como respaldo que no depende de ninguna nube.
+function exportarCopiaCompleta(){
+  nubeFotoLocal().then(function(datos){
+    var copia = {app:'biblioteca-ejercicios', tipo:'copia-completa', version: VERSION_APP,
+      creado: new Date().toISOString(), datos: datos};
+    var fecha = new Date().toISOString().slice(0, 10);
+    descargarArchivoTexto('biblioteca-copia-completa-' + fecha + '.json', JSON.stringify(copia, null, 2), 'application/json');
+  });
+}
+function importarCopiaCompleta(texto){
+  var copia;
+  try{ copia = JSON.parse(texto); }catch(e){ avisar('El archivo no es una copia válida (no se pudo leer).'); return; }
+  if(!copia || copia.tipo !== 'copia-completa' || !copia.datos || typeof copia.datos !== 'object'){
+    avisar('Este archivo no es una copia completa de la biblioteca. Para un historial o una evaluación, usa su propio botón de importar.');
+    return;
+  }
+  var datos = {};
+  CLAVES_SINCRONIZABLES.forEach(function(c){
+    var v = copia.datos[c];
+    if(typeof v !== 'string') return;
+    try{ JSON.parse(v); datos[c] = v; }catch(e){}
+  });
+  if(!Object.keys(datos).length){ avisar('La copia no contiene datos que se puedan restaurar.'); return; }
+  var cuando = copia.creado ? new Date(copia.creado).toLocaleString() : 'fecha desconocida';
+  confirmar('Se reemplaza todo lo que hay ahora (rutina, personas, evaluaciones, dosificaciones, historial, videos y ' +
+    'configuración) por la copia del ' + cuando + '. Lo actual se guarda antes como respaldo en este dispositivo.',
+    {titulo: '¿Restaurar la copia completa?', aceptar: 'Restaurar', cancelar: 'Cancelar'}).then(function(si){
+    if(!si) return;
+    nubeAplicarRemoto(datos).then(function(){
+      // Lo restaurado pasa a ser el cambio más reciente: es lo que debe quedar en la nube.
+      nubeEscribirLocal(CLAVE_MODIFICADO_LOCAL, new Date().toISOString());
+      if(nube.password) nubeSubir();
+      avisar('Copia restaurada.');
+    });
+  });
+}
+function buildCopiaCompleta(){
+  var bloque = el('div',{class:'confcard', style:'margin-bottom:18px;'});
+  bloque.appendChild(el('h2',{class:'conftitle'},[txt('Copia completa')]));
+  bloque.appendChild(el('p',{class:'evalhint'},[txt('Guarda en un archivo todo lo que tiene la app, ' +
+    'o restáuralo desde uno. Sirve para pasar tus datos de la versión web a la de Claude, y al revés.')]));
+  var fila = el('div',{style:'display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;'});
+  var exportar = el('button',{class:'headbtn', type:'button'},[txt('Exportar copia completa')]);
+  exportar.addEventListener('click', exportarCopiaCompleta);
+  var entrada = el('input',{type:'file', accept:'.json,application/json', style:'display:none;'});
+  entrada.addEventListener('change', function(){
+    var f = entrada.files && entrada.files[0];
+    if(!f) return;
+    var lector = new FileReader();
+    lector.onload = function(){ importarCopiaCompleta(String(lector.result || '')); };
+    lector.onerror = function(){ avisar('No se pudo leer el archivo.'); };
+    lector.readAsText(f);
+    entrada.value = '';
+  });
+  var importar = el('button',{class:'headbtn', type:'button'},[txt('Importar copia completa')]);
+  importar.addEventListener('click', function(){ entrada.click(); });
+  fila.appendChild(exportar);
+  fila.appendChild(importar);
+  fila.appendChild(entrada);
+  bloque.appendChild(fila);
+  return bloque;
+}
+
 function buildConfiguracionView(){
   var main = el('main',{class:'view configview'});
   main.appendChild(buildNubePanel());
+  main.appendChild(buildCopiaCompleta());
   var card = el('div',{class:'confcard'});
 
   card.appendChild(el('h2',{class:'conftitle'},[txt('Elongación máxima segura para banda elástica')]));
@@ -6330,14 +6537,16 @@ function buildConfiguracionView(){
 function botonNuevaPersonaHistorial(){
   var btn = el('button',{class:'headbtn', type:'button'},[txt('+ Nueva persona')]);
   btn.addEventListener('click', function(){
-    var nombre = prompt('Nombre de la nueva persona:');
-    if(nombre === null) return;
-    var err = crearPersona(nombre);
-    if(err){ toast(err); return; }
-    var p = perfilActivo();
-    toast('Persona creada: ' + nombre.trim() + '.');
-    state.historialPerfilId = p ? p.id : null;
-    renderAll();
+    pedirTexto('', '', {titulo: 'Nombre de la nueva persona', aceptar: 'Crear'}).then(function(nombre){
+      if(nombre === null) return;
+      return crearPersona(nombre).then(function(err){
+        if(err){ toast(err); return; }
+        var p = perfilActivo();
+        toast('Persona creada: ' + nombre.trim() + '.');
+        state.historialPerfilId = p ? p.id : null;
+        renderAll();
+      });
+    });
   });
   return btn;
 }
@@ -6456,10 +6665,12 @@ function buildHistorialView(){
       descargarBtn.addEventListener('click', function(){ exportarPerfilJSON(p); });
       var delBtn = el('button',{class:'minibtn danger'},[txt('Eliminar perfil')]);
       delBtn.addEventListener('click', function(){
-        if(confirm('¿Eliminar a "' + p.nombre + '" con todo lo suyo (evaluación y dosificación en curso, e historial)? Esta acción no se puede deshacer.')){
+        confirmar('Se borra todo lo suyo: evaluación y dosificación en curso, e historial. Esta acción no se puede deshacer.',
+          {titulo: '¿Eliminar a ' + p.nombre + '?', aceptar: 'Eliminar', cancelar: 'Cancelar'}).then(function(si){
+          if(!si) return;
           eliminarPerfilHistorial(p.id);
           renderAll();
-        }
+        });
       });
       acciones.appendChild(verBtn);
       acciones.appendChild(descargarBtn);
@@ -6500,12 +6711,14 @@ function buildHistorialView(){
   tituloPerfil.appendChild(el('h3',{style:'margin:0;'},[txt(perfilSeleccionado.nombre + ' · ' + perfilSeleccionado.entradas.length + ' registro(s)')]));
   var renombrarBtn = el('button',{class:'minibtn', type:'button', title:'Cambia el nombre de esta persona en todo: perfil, evaluación en curso y registros.'},[txt('✏️ Cambiar nombre')]);
   renombrarBtn.addEventListener('click', function(){
-    var nuevo = prompt('Nuevo nombre para ' + perfilSeleccionado.nombre + ':', perfilSeleccionado.nombre);
-    if(nuevo === null) return;
-    var err = renombrarPerfil(perfilSeleccionado.id, nuevo);
-    if(err){ toast(err); return; }
-    toast('Nombre actualizado.');
-    renderAll();
+    pedirTexto('Se corrige también en su evaluación en curso y en todos sus registros.', perfilSeleccionado.nombre,
+      {titulo: 'Cambiar nombre', aceptar: 'Guardar nombre'}).then(function(nuevo){
+      if(nuevo === null) return;
+      var err = renombrarPerfil(perfilSeleccionado.id, nuevo);
+      if(err){ toast(err); return; }
+      toast('Nombre actualizado.');
+      renderAll();
+    });
   });
   tituloPerfil.appendChild(renombrarBtn);
   perfilHead.appendChild(tituloPerfil);
@@ -6600,14 +6813,15 @@ function buildHistorialView(){
     var pdfBtn = el('button',{class:'minibtn'},[txt('Descargar PDF')]);
     pdfBtn.addEventListener('click', function(){
       try{ exportHistorialEntradaPDF(perfilSeleccionado, entrada); }
-      catch(e){ alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
+      catch(e){ avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
     });
     var delEntradaBtn = el('button',{class:'minibtn danger'},[txt('Eliminar')]);
     delEntradaBtn.addEventListener('click', function(){
-      if(confirm('¿Eliminar este registro del historial? Esta acción no se puede deshacer.')){
+      confirmar('Esta acción no se puede deshacer.', {titulo: '¿Eliminar este registro del historial?', aceptar: 'Eliminar', cancelar: 'Cancelar'}).then(function(si){
+        if(!si) return;
         eliminarEntradaHistorial(perfilSeleccionado.id, entrada.id);
         renderAll();
-      }
+      });
     });
     var editarEntradaBtn = el('button',{class:'minibtn', title:'Abre este registro en Evaluación para corregirlo.'},[txt('Editar')]);
     editarEntradaBtn.addEventListener('click', function(){
@@ -6757,7 +6971,7 @@ function buildComparacionDashboard(perfil, entradaA, entradaB){
     pdfDashboardBtn.disabled = true;
     setTimeout(function(){
       try{ exportComparacionPDF(perfil, entradaA, entradaB); }
-      catch(e){ alert('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
+      catch(e){ avisar('No se pudo generar el PDF. Verifica tu conexión a internet e intenta de nuevo.'); }
       pdfDashboardBtn.textContent = original;
       pdfDashboardBtn.disabled = false;
     }, 30);
@@ -6852,7 +7066,7 @@ function buildComparacionDashboard(perfil, entradaA, entradaB){
 // y dosificación por ejercicio) como un PDF, reutilizando el mismo cálculo del dashboard en pantalla.
 function exportComparacionPDF(perfil, entradaA, entradaB){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var comp = calcularComparacionHistorial(entradaA, entradaB);
@@ -6973,7 +7187,7 @@ function exportComparacionPDF(perfil, entradaA, entradaB){
 
   var nombreArchivo = 'dashboard-progresion-' + nombrePerfilNormalizado(perfil.nombre).replace(/\s+/g,'-') + '.pdf';
   agregarMarcaDeAguaPDF(doc);
-  doc.save(nombreArchivo);
+  guardarPdf(doc, nombreArchivo);
 }
 
 function refreshDosifDrawerContent(){
@@ -7057,14 +7271,14 @@ function construirEntrenadorPDFDoc(){
 // una copia (snapshot) en el Historial, dentro del perfil de la persona evaluada.
 function exportEntrenadorPDF(){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var doc = construirEntrenadorPDFDoc();
   var guardado = guardarEntradaHistorial();
   var nombreArchivo = 'historial-entrenamiento.pdf';
   agregarMarcaDeAguaPDF(doc);
-  doc.save(nombreArchivo);
+  guardarPdf(doc, nombreArchivo);
   if(state.view === 'historial') renderAll();
   return guardado;
 }
@@ -7073,7 +7287,7 @@ function exportEntrenadorPDF(){
 // modificar los datos actuales de Evaluación/Dosificación/Rutina: los "presta" temporalmente).
 function exportHistorialEntradaPDF(perfil, entrada){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var backupEvaluacion = evaluacion, backupDosificacion = dosificacion, backupRoutine = state.routine;
@@ -7085,7 +7299,7 @@ function exportHistorialEntradaPDF(perfil, entrada){
     var nombreArchivo = 'historial-' + nombrePerfilNormalizado(perfil.nombre).replace(/\s+/g,'-') +
       '-' + entrada.fecha.slice(0,10) + '.pdf';
     agregarMarcaDeAguaPDF(doc);
-    doc.save(nombreArchivo);
+    guardarPdf(doc, nombreArchivo);
   } finally {
     evaluacion = backupEvaluacion;
     dosificacion = backupDosificacion;
@@ -7095,14 +7309,14 @@ function exportHistorialEntradaPDF(perfil, entrada){
 
 function exportDosificacionPDF(){
   if(!window.jspdf || !window.jspdf.jsPDF){
-    alert('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
+    avisar('No se pudo cargar el generador de PDF. Verifica tu conexión a internet e intenta de nuevo.');
     return;
   }
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({unit:'mm', format:'a4'});
   renderDosificacionCards(doc);
   agregarMarcaDeAguaPDF(doc);
-  doc.save('dosificacion-entrenamiento.pdf');
+  guardarPdf(doc, 'dosificacion-entrenamiento.pdf');
 }
 
 // Dibuja, dentro del "doc" ya creado, el encabezado de la dosificación y una tarjeta detallada
@@ -7361,7 +7575,7 @@ function dosificacionATexto(){
 // Marca de versión visible en Config. Sirve para saber de un vistazo si el dispositivo está
 // ejecutando la versión actual o una copia vieja guardada en la caché del navegador — algo
 // que ya ha costado varias idas y venidas intentando adivinarlo.
-var VERSION_APP = '2026-10-09 · extensión de codo';
+var VERSION_APP = '2026-10-19 · artefacto de Claude';
 
 // Las seis cosas que la app guarda. Son las que se suben y se bajan.
 var CLAVES_SINCRONIZABLES = ['mi-rutina','videos-ejemplo','configuracion-banda',
@@ -7389,6 +7603,7 @@ function nubeEscribirLocal(clave, valor){
 }
 
 function nubePeticion(accion, extra){
+  if(ES_ARTEFACTO) return nubePeticionCuenta(accion, extra);
   var opciones;
   if(accion === 'estado'){
     opciones = {method:'GET'};
@@ -7403,6 +7618,88 @@ function nubePeticion(accion, extra){
       return {ok: r.ok, codigo: r.status, cuerpo: j};
     });
   });
+}
+
+// Dentro de un artefacto de Claude no hay servidor propio: la copia se guarda en el espacio
+// privado de la cuenta de Claude de quien abre la página (nadie más lo ve, ni siquiera quien
+// la publicó). Responde con la misma forma que el servidor, así el resto del módulo no cambia.
+// Cada dato se parte en trozos porque un documento admite como mucho 256 KiB; el índice se
+// escribe al final, de modo que una subida a medias nunca deja la copia anterior ilegible.
+var TAMANO_TROZO = 50000;
+var cuentaClaude = null;
+var nubeSubidoCuenta = {}; // lo que ya está en la cuenta, para subir solo lo que cambió
+var colaCuenta = Promise.resolve();
+function cuentaClaudeLista(){
+  if(!cuentaClaude){
+    cuentaClaude = Promise.all([window.claude.use('db'), window.claude.use('user')]).then(function(r){
+      if(!r[0] || !r[1]) return null;
+      return r[1].id().then(function(uid){ return uid ? r[0].collection('data/users/' + uid) : null; });
+    }).catch(function(){ return null; });
+  }
+  return cuentaClaude;
+}
+function nubePeticionCuenta(accion, extra){
+  return cuentaClaudeLista().then(function(col){
+    if(!col){
+      if(accion === 'estado') return {ok:true, codigo:200, cuerpo:{configurada:false}};
+      return {ok:false, codigo:503, cuerpo:{detalle:'Tu cuenta de Claude no está disponible en esta vista.'}};
+    }
+    if(accion === 'estado') return {ok:true, codigo:200, cuerpo:{configurada:true}};
+    if(accion === 'leer') return cuentaLeer(col);
+    if(accion === 'guardar'){
+      var tarea = colaCuenta.then(function(){ return cuentaGuardar(col, extra.datos, extra.actualizado, extra.dispositivo); });
+      colaCuenta = tarea.catch(function(){});
+      return tarea;
+    }
+    return {ok:false, codigo:400, cuerpo:{}};
+  }).catch(function(e){
+    return {ok:false, codigo:500, cuerpo:{detalle:'No se pudo usar tu cuenta de Claude' + (e && e.code ? ' (' + e.code + ')' : '') + '.'}};
+  });
+}
+function cuentaLeer(col){
+  return col.doc('indice').get().then(function(snap){
+    if(!snap.exists) return {ok:true, codigo:200, cuerpo:{vacio:true}};
+    var indice = snap.data() || {};
+    var claves = indice.claves || {};
+    var datos = {};
+    return Promise.all(Object.keys(claves).filter(function(c){
+      return CLAVES_SINCRONIZABLES.indexOf(c) !== -1;
+    }).map(function(clave){
+      var info = claves[clave] || {};
+      var lecturas = [];
+      for(var i = 0; i < (info.trozos || 0); i++) lecturas.push(col.doc(clave + '.' + i).get());
+      return Promise.all(lecturas).then(function(snaps){
+        var texto = snaps.map(function(t){ var d = t.data(); return (d && typeof d.t === 'string') ? d.t : ''; }).join('');
+        // Un trozo que falta o que otro dispositivo está reescribiendo: mejor no tocar ese dato.
+        if(texto.length !== info.largo) return;
+        datos[clave] = texto;
+        nubeSubidoCuenta[clave] = texto;
+      });
+    })).then(function(){
+      return {ok:true, codigo:200, cuerpo:{datos:datos, actualizado:indice.actualizado || null}};
+    });
+  });
+}
+function cuentaGuardar(col, datos, actualizado, dispositivo){
+  var claves = {};
+  var escrituras = Promise.resolve();
+  Object.keys(datos).forEach(function(clave){
+    var texto = datos[clave];
+    var trozos = Math.max(1, Math.ceil(texto.length / TAMANO_TROZO));
+    claves[clave] = {trozos: trozos, largo: texto.length};
+    if(nubeSubidoCuenta[clave] === texto) return;
+    for(var i = 0; i < trozos; i++){
+      (function(i){
+        escrituras = escrituras.then(function(){
+          return col.doc(clave + '.' + i).set({t: texto.slice(i * TAMANO_TROZO, (i + 1) * TAMANO_TROZO)});
+        });
+      })(i);
+    }
+    escrituras = escrituras.then(function(){ nubeSubidoCuenta[clave] = texto; });
+  });
+  return escrituras.then(function(){
+    return col.doc('indice').set({actualizado: actualizado, dispositivo: dispositivo || '', claves: claves});
+  }).then(function(){ return {ok:true, codigo:200, cuerpo:{}}; });
 }
 
 // Lee el estado actual de los datos del dispositivo a través de la misma capa que usa el
@@ -7567,7 +7864,8 @@ function nubeSincronizar(){
 }
 
 function nubeArranque(){
-  nube.password = nubeLeerLocal(CLAVE_PASSWORD_LOCAL);
+  // En el artefacto no hay contraseña: la cuenta de Claude ya dice quién es quién.
+  nube.password = ES_ARTEFACTO ? 'cuenta-claude' : nubeLeerLocal(CLAVE_PASSWORD_LOCAL);
   return nubePeticion('estado').then(function(r){
     if(!r.ok){
       nube.estado = 'error';
@@ -7635,6 +7933,7 @@ document.addEventListener('keydown', function(e){
 // rutina, el panel de filtros) debe cerrar esa capa, no salir de la aplicación.
 var capasHistorial = 0;
 function empujarCapa(){
+  if(ES_ARTEFACTO) return;
   capasHistorial++;
   try{ history.pushState({capaApp:capasHistorial}, ''); }catch(e){}
 }
