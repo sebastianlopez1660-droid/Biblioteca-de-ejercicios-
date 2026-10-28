@@ -74,49 +74,61 @@ body::before{
 #app{position:relative; z-index:1; display:flex; flex-direction:column; min-height:100vh;}
 
 /* ---------- HEADER ---------- */
+/* Cabecera al estilo de app móvil (igual que ScoutLab): degradado de la marca que se funde
+   con el fondo, saludo con el logotipo en un círculo, buscador redondeado y pestañas en
+   píldora. Su altura real se publica en --topbar-h (ver syncTopbarHeight) para que el
+   panel de filtros se pegue justo debajo, mida lo que mida la cabecera. */
 header.topbar{
   position:sticky; top:0; z-index:40;
   background-color:var(--bg);
-  background-image:
-    linear-gradient(rgba(26,26,26,.35) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26,26,26,.35) 1px, transparent 1px);
-  background-size:44px 44px;
-  border-bottom:1px solid var(--border);
+  background-image:linear-gradient(180deg, rgba(139,13,20,.5) 0%, rgba(139,13,20,.14) 60%, var(--bg) 100%);
+  border-bottom:1px solid var(--border-soft);
   padding:14px 22px;
   display:flex; align-items:center; gap:18px; flex-wrap:wrap;
 }
-.brand{display:flex; align-items:baseline; gap:10px; margin-right:auto;}
-.brand .mark{
-  font-family:'IBM Plex Mono',monospace;
-  font-size:11px; letter-spacing:.14em;
-  color:var(--accent); border:1px solid var(--accent-line);
-  padding:2px 6px; border-radius:3px; text-transform:uppercase;
+.brand{display:flex; align-items:center; gap:12px; margin-right:auto; min-width:0;}
+.brand .avatar{
+  width:42px; height:42px; border-radius:50%; flex:0 0 auto;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--panel-2); border:2px solid #b0362f;
 }
-.brand h1{font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:600; margin:0; letter-spacing:-.01em;}
-.brand .sub{font-size:12px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;}
+.brand .avatar svg{display:block;}
+.brand .greet{font-family:'Inter',sans-serif; font-size:16px; font-weight:700; line-height:1.2; color:var(--text); white-space:nowrap;}
+.brand .sub{font-size:12px; color:var(--text-dim); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 
 .searchwrap{
   position:relative; flex:1 1 280px; max-width:420px;
 }
 .searchwrap input{
-  width:100%; background:var(--panel-2); border:1px solid var(--border);
-  color:var(--text); border-radius:7px; padding:9px 12px 9px 32px;
-  font-size:13.5px; font-family:'Inter',sans-serif;
+  width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.06);
+  color:var(--text); border-radius:14px; padding:11px 12px 11px 40px;
+  font-size:14px; font-family:'Inter',sans-serif;
   outline:none; transition:border-color .15s;
 }
 .searchwrap input:focus{border-color:var(--accent-line);}
-.searchwrap svg{position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-faint); width:15px; height:15px;}
+.searchwrap > svg{position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--text-dim); width:18px; height:18px;}
+/* Botón de filtros dentro del buscador (solo en móvil, donde el panel de filtros va oculto). */
+.searchfilters{
+  display:none; position:absolute; right:5px; top:50%; transform:translateY(-50%);
+  width:36px; height:36px; border-radius:50%; border:none; background:transparent;
+  color:var(--text); cursor:pointer; align-items:center; justify-content:center;
+}
+.searchfilters:hover{background:rgba(255,255,255,.08);}
+.searchfilters svg{width:19px; height:19px;}
 
 .headbtn{
   background:var(--panel-2); border:1px solid var(--border); color:var(--text);
-  font-family:'IBM Plex Mono',monospace; font-size:12px; padding:9px 14px;
-  border-radius:7px; cursor:pointer; display:flex; align-items:center; gap:8px;
+  font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:9px 14px;
+  border-radius:10px; cursor:pointer; display:flex; align-items:center; gap:8px;
   transition:all .15s; white-space:nowrap;
 }
 .headbtn:hover{border-color:var(--accent-line); background:var(--panel-3);}
 .headbtn.primary{background:var(--accent-soft); border-color:var(--accent-line); color:#f0a8a0;}
 .headbtn .count{background:var(--accent); color:#fff; border-radius:10px; padding:1px 7px; font-size:11px;}
-.headbtn.filtersbtn{display:none;}
+/* En la cabecera, "Mi rutina" / "Mis dosificaciones" van rellenos como la acción principal. */
+.topbar .headbtn.primary{background:var(--accent); border-color:var(--accent); color:#fff; border-radius:12px; padding:10px 16px;}
+.topbar .headbtn.primary:hover{opacity:.9;}
+.topbar .headbtn.primary .count{background:rgba(255,255,255,.2);}
 .headbtn:disabled{opacity:.4; cursor:not-allowed;}
 
 /* ---------- LAYOUT ---------- */
@@ -126,8 +138,8 @@ aside.filters{
   width:270px; flex:0 0 270px;
   border-right:1px solid var(--border);
   overflow:hidden;
-  max-height:calc(100vh - 61px);
-  position:sticky; top:61px;
+  max-height:calc(100vh - var(--topbar-h, 61px));
+  position:sticky; top:var(--topbar-h, 61px);
   align-self:flex-start;
   z-index:75;
 }
@@ -145,7 +157,7 @@ aside.filters{
    fuera de la pantalla sin forma de alcanzarlos. Repetir aquí el mismo tope da a la
    caja una altura definida y devuelve el desplazamiento, sin alterar el aspecto. */
 @media (min-width:881px){
-  .filters-inner{max-height:calc(100vh - 61px);}
+  .filters-inner{max-height:calc(100vh - var(--topbar-h, 61px));}
 }
 .filters h2{
   font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.12em;
@@ -222,7 +234,7 @@ main.results{flex:1; min-width:0; padding:20px 24px 60px;}
   display:grid; grid-template-columns:repeat(auto-fill, minmax(258px,1fr)); gap:12px;
 }
 .card{
-  background:var(--panel); border:1px solid var(--border); border-radius:10px;
+  background:var(--panel); border:1px solid var(--border); border-radius:14px;
   padding:14px 14px 12px; cursor:pointer; position:relative; overflow:hidden;
   transition:border-color .15s, transform .1s;
   display:flex; flex-direction:column; gap:8px;
@@ -269,7 +281,7 @@ main.results{flex:1; min-width:0; padding:20px 24px 60px;}
 .cdots i.on{background:var(--dotcolor, var(--accent));}
 .card.cardv2 .cdivider{border:none; border-top:1px solid var(--border-soft); margin:0;}
 .card.cardv2 .cactions{display:flex; flex-direction:column; gap:8px;}
-.cactions button{width:100%; padding:10px; border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer; border:1px solid var(--border); background:var(--panel-3); color:var(--text-dim); transition:all .15s;}
+.cactions button{width:100%; padding:11px; border-radius:10px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:1px solid var(--border); background:var(--panel-3); color:var(--text-dim); transition:all .15s;}
 .cactions button:hover{color:var(--text); border-color:var(--accent-line);}
 .cactions button.caprimary{background:var(--accent); border-color:var(--accent); color:#fff;}
 .cactions button.caprimary.added{background:var(--panel-3); border-color:var(--sage); color:var(--sage);}
@@ -405,17 +417,17 @@ main.results{flex:1; min-width:0; padding:20px 24px 60px;}
 .dwvideo{display:inline-flex; margin-top:5px; font-size:11px; color:var(--sage); text-decoration:none;}
 .dwvideo:hover{text-decoration:underline;}
 .detail .dfoot{padding:0 24px 22px; display:flex; gap:10px;}
-.dfoot button{flex:1; padding:11px; border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer; border:1px solid var(--border); background:var(--panel-2); color:var(--text);}
+.dfoot button{flex:1; padding:11px; border-radius:10px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:1px solid var(--border); background:var(--panel-2); color:var(--text);}
 .dfoot button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
 
-/* ---------- NAV TABS ---------- */
-.navtabs{display:flex; gap:4px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:3px;}
+/* ---------- NAV TABS (píldoras: la activa va rellena) ---------- */
+.navtabs{display:flex; gap:6px;}
 .navtab{
-  background:none; border:none; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;
-  font-size:12px; padding:7px 14px; border-radius:6px; cursor:pointer; transition:all .15s; white-space:nowrap;
+  background:none; border:none; color:var(--text); font-family:'Inter',sans-serif;
+  font-size:13px; font-weight:600; padding:8px 14px; border-radius:10px; cursor:pointer; transition:all .15s; white-space:nowrap;
 }
-.navtab:hover{color:var(--text);}
-.navtab.active{background:var(--accent-soft); color:#f0a8a0;}
+.navtab:hover{background:var(--panel-2);}
+.navtab.active{background:var(--accent); color:#fff;}
 
 /* ---------- EVALUACIÓN ---------- */
 /* width:100% es imprescindible: #app es un flex en columna y los márgenes laterales
@@ -789,7 +801,7 @@ button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-act
   aside.filters{
     display:none;
     position:fixed;
-    top:61px;
+    top:var(--topbar-h, 61px);
     left:0; right:0; bottom:0;
     width:100%;
     height:auto;
@@ -819,7 +831,17 @@ button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-act
   aside.filters.open{display:block;}
   aside.filters .filters-inner{padding-bottom:86px;}
   .filters h2 .fclose{display:inline-block;}
-  .headbtn.filtersbtn{display:flex;}
+  /* Cabecera en móvil, en el orden del diseño: saludo (con "Mi rutina" a la derecha),
+     buscador con el botón de filtros dentro y, debajo, las pestañas en píldora. */
+  header.topbar{padding:14px 16px 10px; gap:12px;}
+  .brand{flex:1 1 0;}
+  .topbar > .headbtn{order:2;}
+  .topbar .headbtn.primary{padding:8px 12px; font-size:12.5px;}
+  .topbar .searchwrap{order:3; flex:1 1 100%; max-width:none;}
+  .navtabs{order:4; flex:1 1 100%;}
+  .searchfilters{display:inline-flex;}
+  .searchwrap input{padding-right:84px;}
+  .searchclear{right:44px;}
   main.results{padding:16px;}
   /* En móvil el panel de filtros tapa los resultados: esta barra fija dice cuántos
      ejercicios quedan con los filtros elegidos y cierra el panel de un toque. */
@@ -829,9 +851,9 @@ button, .chip, .card, .navtab{-webkit-tap-highlight-color:transparent; touch-act
     background:var(--panel); border-top:1px solid var(--border);
   }
   .fapply button{
-    width:100%; padding:12px; border-radius:8px; border:1px solid var(--accent);
-    background:var(--accent); color:#fff; font-family:'IBM Plex Mono',monospace;
-    font-size:13px; cursor:pointer;
+    width:100%; padding:12px; border-radius:10px; border:1px solid var(--accent);
+    background:var(--accent); color:#fff; font-family:'Inter',sans-serif; font-weight:600;
+    font-size:13.5px; cursor:pointer;
   }
   .rxgrid{grid-template-columns:1fr 1fr;}
   .metrics{grid-template-columns:1fr;}
@@ -3289,6 +3311,7 @@ function atraparTab(cont, ev){
 function renderAll(){
   root.innerHTML = '';
   root.appendChild(buildHeader());
+  syncTopbarHeight();
   if(state.view === 'evaluacion'){
     root.appendChild(buildEvaluacionView());
     return;
@@ -3390,16 +3413,21 @@ function buildNavTabs(){
 
 function buildHeader(){
   var header = el('header',{class:'topbar'});
+  // Mismo logotipo que ScoutLab (tres trazos inclinados), dentro de un círculo.
+  var avatar = el('span',{class:'avatar'});
+  avatar.innerHTML = '<svg width="26" height="16" viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="40,280 95,280 261.4,20 206.4,20" fill="#8B0D14"/><polygon points="135,280 190,280 356.4,20 301.4,20" fill="#8B0D14"/><polygon points="230,280 396.4,20 451.4,20 333,205 460,205 460,280" fill="#8B0D14"/></svg>';
   var brand = el('div',{class:'brand'},[
-    el('span',{class:'mark'},[txt('DB · '+TOTAL)]),
-    el('h1'),
-    el('span',{class:'sub'},[txt(
-      state.view === 'evaluacion' ? 'Evaluación de entrenamiento' :
-      state.view === 'dosificacion' ? 'Dosificación del entrenamiento' :
-      state.view === 'historial' ? 'Historial por persona evaluada' :
-      state.view === 'configuracion' ? 'Configuración' :
-      'Biblioteca de ejercicios'
-    )])
+    avatar,
+    el('div',{style:'min-width:0;'},[
+      el('div',{class:'greet'},[txt('Hola, Sebastián')]),
+      el('div',{class:'sub'},[txt(
+        state.view === 'evaluacion' ? 'Evaluación de entrenamiento' :
+        state.view === 'dosificacion' ? 'Dosificación del entrenamiento' :
+        state.view === 'historial' ? 'Historial por persona evaluada' :
+        state.view === 'configuracion' ? 'Configuración' :
+        'Biblioteca · ' + TOTAL + ' ejercicios'
+      )])
+    ])
   ]);
   header.appendChild(brand);
   header.appendChild(buildNavTabs());
@@ -3477,18 +3505,29 @@ function buildHeader(){
   search.appendChild(el('span',{class:'searchkbd', 'aria-hidden':'true'},[txt('/')]));
   if(state.search) search.classList.add('hasvalue');
 
-  var filtersBtn = el('button',{class:'headbtn filtersbtn', onclick:function(){ toggleFiltersPanel(); }},[txt('☰ Filtros')]);
+  // En móvil el panel de filtros va oculto: se abre con este botón, dentro del buscador.
+  var filtersBtn = el('button',{type:'button', class:'searchfilters', title:'Filtros', 'aria-label':'Filtros', onclick:function(){ toggleFiltersPanel(); }});
+  filtersBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
+  search.appendChild(filtersBtn);
 
   var routineBtn = el('button',{class:'headbtn primary', onclick:function(){ openDrawer(); }},[
     txt('Mi rutina'),
     el('span',{class:'count'},[txt(String(state.routine.length))])
   ]);
 
-  header.appendChild(filtersBtn);
   header.appendChild(search);
   header.appendChild(routineBtn);
   return header;
 }
+
+// La cabecera cambia de alto según la pantalla y el apartado: se publica su alto real en
+// --topbar-h para que el panel de filtros quede pegado justo debajo.
+function syncTopbarHeight(){
+  var header = document.querySelector('header.topbar');
+  if(header) document.documentElement.style.setProperty('--topbar-h', header.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncTopbarHeight);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(syncTopbarHeight);
 
 function filterChipGroup(label, options, current, onSet, colored){
   var group = el('div',{class:'fgroup'});
@@ -3873,9 +3912,9 @@ function buildCard(d){
 
   card.appendChild(el('hr',{class:'cdivider'}));
 
+  // La ficha se abre tocando la tarjeta (ver arriba), así que aquí solo queda la acción
+  // principal, como en las tarjetas del diseño.
   var actions = el('div',{class:'cactions'});
-  var fichaBtn = el('button',{type:'button'},[txt('👁 Ficha')]);
-  fichaBtn.addEventListener('click', function(ev){ ev.stopPropagation(); openDetail(d); });
   var addBtn = el('button',{type:'button', class:'caprimary' + (inRoutine?' added':''),
     'aria-pressed': (inRoutine?'true':'false')},[txt(inRoutine?'✓ En mi rutina':'+ Añadir a mi rutina')]);
   addBtn.addEventListener('click', function(ev){
@@ -3884,7 +3923,6 @@ function buildCard(d){
     // entera (que devolvía la lista al principio en cada añadido).
     toggleRoutine(d.codigo, {ligero:true});
   });
-  actions.appendChild(fichaBtn);
   actions.appendChild(addBtn);
   card.appendChild(actions);
 
@@ -6157,11 +6195,9 @@ function buildDosificacionView(){
   }
 
   // --- Resumen ---
+  // "Mis dosificaciones" (cabecera) abre la lista y la pestaña Historial lleva al historial,
+  // así que aquí solo queda la exportación.
   var resumen = el('div',{class:'evalactions'});
-  var openBtn = el('button',{class:'headbtn'},[txt('Ver mis dosificaciones (' + dosificacion.items.length + ')')]);
-  openBtn.addEventListener('click', openDrawer);
-  resumen.appendChild(openBtn);
-
   var pdfEntrenadorBtn = el('button',{class:'headbtn primary', title:'Exporta un PDF con la Evaluación completa y todas las dosificaciones, para guardar como historial.'},[txt('PDF entrenador')]);
   pdfEntrenadorBtn.addEventListener('click', function(){
     var original = pdfEntrenadorBtn.textContent;
@@ -6175,10 +6211,6 @@ function buildDosificacionView(){
     }, 30);
   });
   resumen.appendChild(pdfEntrenadorBtn);
-
-  var verHistorialBtn = el('button',{class:'headbtn', title:'Cada PDF entrenador que generes queda guardado aquí, agrupado por persona evaluada.'},[txt('Ver historial')]);
-  verHistorialBtn.addEventListener('click', function(){ state.view = 'historial'; renderAll(); });
-  resumen.appendChild(verHistorialBtn);
 
   main.appendChild(resumen);
 
