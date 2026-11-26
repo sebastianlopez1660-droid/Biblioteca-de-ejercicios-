@@ -1,5 +1,5 @@
 import { EXERCISES } from './js/exercises.js';
-import './js/ex_lote6.js'; import './js/ex_lote7.js'; import './js/ex_lote8.js'; import './js/ex_lote9.js'; import './js/ex_lote10.js';
+import './js/ex_lote6.js'; import './js/ex_lote7.js'; import './js/ex_lote8.js'; import './js/ex_lote9.js'; import './js/ex_lote10.js'; import './js/ex_lote11.js'; import './js/ex_lote12.js'; import './js/ex_lote13.js'; import './js/ex_lote14.js'; import './js/ex_lote15.js'; import './js/ex_lote16.js'; import './js/ex_lote17.js'; import './js/ex_lote18.js'; import './js/ex_lote19.js'; import './js/ex_lote20.js'; import './js/groups_ts.js'; import './js/ex_lote21.js'; import './js/ex_lote22.js'; import './js/ex_lote23.js'; import './js/ex_lote24.js'; import './js/ex_lote25.js'; import './js/ex_lote26.js'; import './js/ex_lote27.js'; import './js/ex_lote28.js'; import './js/ex_lote29.js';
 const out = {};
 for (const c of process.argv.slice(2)) { const d = EXERCISES[c]; out[c] = { prim: d.primary.join(' · '), sec: d.secondary.join(' · ') }; }
 console.log(JSON.stringify(out));

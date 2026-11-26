@@ -399,3 +399,146 @@ export function anklePad(o = {}) {
   const kp = box(0.45, 0.04, 0.55, padMat(), 0.015); kp.position.set(0, 0.02, -0.12); g.add(kp);
   return shadowAll(g);
 }
+
+// lastre de tobillo: manguito acolchado alrededor de la espinilla (eje local Y)
+export function ankleWeight() {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.085, 28, 1, true), new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.7, side: THREE.DoubleSide }));
+  g.add(m);
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.059, 0.008, 8, 32), new THREE.MeshStandardMaterial({ color: 0x8b0d14, roughness: 0.6 }));
+  strap.rotation.x = Math.PI / 2; g.add(strap);
+  return shadowAll(g);
+}
+// plataforma móvil de la prensa (eje local Z = dirección de las piernas)
+export function legPressSled() {
+  const g = new THREE.Group(); const fr = M.frame();
+  const plate = box(0.62, 0.48, 0.03, M.iron(), 0.01); plate.position.z = 0.015; g.add(plate);
+  const grip = box(0.60, 0.46, 0.01, M.rubber(), 0.004); grip.position.z = -0.002; g.add(grip);
+  for (const s of [1, -1]) { const rl = box(0.05, 0.05, 0.9, fr); rl.position.set(s * 0.36, -0.20, 0.45); g.add(rl); }
+  return shadowAll(g);
+}
+// asiento de la prensa a 45°: respaldo inclinado y base
+export function legPressSeat(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame();
+  const rec = (o.recline ?? 48) * Math.PI / 180, sy = o.seatY ?? 0.42;
+  const seat = box(0.46, 0.08, 0.40, padMat(), 0.03); seat.position.set(0, sy - 0.13, 0.02); seat.rotation.x = 0.25; g.add(seat);
+  const back = box(0.46, 0.75, 0.08, padMat(), 0.03); back.position.set(0, sy + 0.18, -0.25); back.rotation.x = -rec; g.add(back);
+  const base = box(0.7, 0.05, 2.0, fr); base.position.set(0, 0.025, 0.55); g.add(base);
+  const col = box(0.1, sy - 0.15, 0.1, fr); col.position.set(0, (sy - 0.15) / 2, -0.05); g.add(col);
+  const ang = (o.legAng ?? 42) * Math.PI / 180;
+  for (const s of [1, -1]) {
+    const L = 1.7, rail = box(0.06, 0.06, L, fr);
+    rail.position.set(s * 0.36, sy + Math.sin(ang) * 0.95 - 0.25, Math.cos(ang) * 0.95 + 0.05); rail.rotation.x = -ang; g.add(rail);
+    const leg = box(0.06, sy + 1.0, 0.06, fr); leg.position.set(s * 0.36, (sy + 1.0) / 2, 1.35); g.add(leg);
+  }
+  for (const s of [1, -1]) { const h = cylX(0.017, 0.14, M.rubber()); h.rotation.y = Math.PI / 2; h.position.set(s * 0.30, sy - 0.02, 0.10); g.add(h); }
+  return shadowAll(g);
+}
+
+// BOSU: media esfera sobre base rígida (altura ~0.22 m)
+export function bosu() {
+  const g = new THREE.Group();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.32, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2f6fa8, roughness: 0.55 }));
+  dome.scale.set(1, 0.62, 1); dome.position.y = 0.025; g.add(dome);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.325, 0.325, 0.03, 48), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.7 }));
+  base.position.y = 0.015; g.add(base);
+  return shadowAll(g);
+}
+
+// tabla de equilibrio (balance board): tablero sobre un medio cilindro, gira alrededor de Z
+export function balanceBoard() {
+  const g = new THREE.Group();
+  const top = box(0.62, 0.025, 0.40, new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: 0.7 }), 0.008); top.position.y = 0.0; g.add(top);
+  const grip = box(0.58, 0.004, 0.36, new THREE.MeshStandardMaterial({ color: 0x23262a, roughness: 0.9 }), 0.002); grip.position.y = 0.014; g.add(grip);
+  const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.36, 24, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.7 }));
+  roll.rotation.x = Math.PI / 2; roll.rotation.z = Math.PI; roll.position.y = -0.013; g.add(roll);
+  return shadowAll(g);
+}
+// espuma de equilibrio (foam pad)
+export function foamPad() {
+  const g = new THREE.Group();
+  const m = box(0.48, 0.065, 0.40, new THREE.MeshStandardMaterial({ color: 0x3b6f8f, roughness: 0.95 }), 0.02); m.position.y = 0.0325; g.add(m);
+  return shadowAll(g);
+}
+
+// cadena: n eslabones (se colocan en cada fotograma)
+export function chain(n = 44) {
+  const g = new THREE.Group();
+  const geo = new THREE.TorusGeometry(0.019, 0.0055, 8, 14); geo.scale(1, 1.45, 1);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8d9298, metalness: 0.85, roughness: 0.38 });
+  for (let i = 0; i < n; i++) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m); }
+  return g;
+}
+
+// escalera de agilidad en el suelo (a lo largo de z, desde z0)
+export function ladder(o = {}) {
+  const g = new THREE.Group();
+  const n = o.n ?? 60, sp = o.sp ?? 0.45, w = o.w ?? 0.50, z0 = o.z0 ?? -0.3;
+  const mat = new THREE.MeshStandardMaterial({ color: 0xe8c22a, roughness: 0.6 });
+  for (const s of [1, -1]) { const r = box(0.03, 0.008, n * sp, mat, 0.002); r.position.set(s * w / 2, 0.004, z0 + n * sp / 2); g.add(r); }
+  for (let i = 0; i <= n; i++) { const r = box(w, 0.010, 0.035, mat, 0.003); r.position.set(0, 0.005, z0 + i * sp); g.add(r); }
+  return shadowAll(g);
+}
+
+// barras paralelas para fondos (a lo largo de z)
+export function dipBars(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame(); const st = M.steel();
+  const h = o.h ?? 1.12, w = o.w ?? 0.26, L = o.len ?? 1.0;
+  for (const s of [1, -1]) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, L, 20), st); bar.rotation.x = Math.PI / 2; bar.position.set(s * w, h, 0); g.add(bar);
+    for (const z of [-L / 2 + 0.08, L / 2 - 0.08]) { const up = box(0.05, h, 0.05, fr); up.position.set(s * (w + 0.03), h / 2, z); g.add(up); }
+    const ft = box(0.08, 0.04, L, fr); ft.position.set(s * (w + 0.03), 0.02, 0); g.add(ft);
+  }
+  return shadowAll(g);
+}
+// barra de dominadas con dos postes (barra a lo largo de x)
+export function pullupBar(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame(); const st = M.steel();
+  const h = o.h ?? 2.25, w = o.w ?? 0.62;
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 2 * w + 0.1, 20), st); bar.rotation.z = Math.PI / 2; bar.position.set(0, h, 0); g.add(bar);
+  for (const s of [1, -1]) { const up = box(0.06, h + 0.08, 0.06, fr); up.position.set(s * (w + 0.05), (h + 0.08) / 2, 0); g.add(up); const ft = box(0.08, 0.04, 0.9, fr); ft.position.set(s * (w + 0.05), 0.02, 0); g.add(ft); }
+  return shadowAll(g);
+}
+// tubo de longitud 1 a lo largo de Y (se escala en cada fotograma)
+export function rod(r = 0.02, color = 0x2a2d31) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 16), new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.4 }));
+  m.castShadow = true; return m;
+}
+// asa de máquina / polea (a lo largo de X)
+export function handle() {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.14, 16), M.rubber()); m.rotation.z = Math.PI / 2; g.add(m);
+  return shadowAll(g);
+}
+
+// banco inclinado / declinado: asiento en z ≈ 0 y respaldo hacia -z con el ángulo dado (grados sobre la horizontal; negativo = declinado)
+export function inclineBench(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame(); const pad = M.pad();
+  const a = (o.angle ?? 30) * Math.PI / 180, sh = o.seatH ?? 0.45, L = o.backLen ?? 0.95;
+  const seat = box(0.30, 0.08, 0.36, pad, 0.03); seat.position.set(0, sh - 0.04, 0.10); g.add(seat);
+  const back = box(0.28, 0.08, L, pad, 0.03);
+  const z0 = -0.08, y0 = sh;
+  back.position.set(0, y0 + Math.sin(a) * L / 2 - 0.04 * Math.cos(a), z0 - Math.cos(a) * L / 2);
+  back.rotation.x = a; g.add(back);
+  const yEnd = Math.max(0.12, y0 + Math.sin(a) * L - 0.12), zEnd = z0 - Math.cos(a) * L * 0.85;
+  const post = box(0.06, Math.max(0.1, yEnd), 0.06, fr); post.position.set(0, Math.max(0.1, yEnd) / 2, zEnd); g.add(post);
+  const col = box(0.06, sh - 0.08, 0.06, fr); col.position.set(0, (sh - 0.08) / 2, 0.08); g.add(col);
+  const base = box(0.08, 0.04, Math.abs(zEnd) + 0.35, fr); base.position.set(0, 0.02, (zEnd + 0.25) / 2); g.add(base);
+  for (const z of [0.20, zEnd]) { const ft = box(0.42, 0.04, 0.08, fr); ft.position.set(0, 0.02, z); g.add(ft); }
+  if (o.legHook) { const hk = cylX(0.05, 0.36, pad); hk.position.set(0, sh + 0.10, 0.42); g.add(hk); const hp = box(0.05, sh + 0.10, 0.05, fr); hp.position.set(0, (sh + 0.10) / 2, 0.42); g.add(hp); }
+  return shadowAll(g);
+}
+
+// banco de hiperextensiones a 45°: apoyo de cadera en z ≈ 0.16 y plataforma de pies detrás
+export function romanChair(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame(); const pad = M.pad();
+  const a = Math.PI / 4;
+  const hp = box(0.40, 0.10, 0.34, pad, 0.04); hp.position.set(0, o.padY ?? 0.70, o.padZ ?? 0.17); hp.rotation.x = -a; g.add(hp);
+  const fp = box(0.42, 0.04, 0.26, fr, 0.01); fp.position.set(0, 0.10, -0.56); fp.rotation.x = -a * 0.5; g.add(fp);
+  const ap = cylX(0.045, 0.40, pad); ap.position.set(0, 0.24, -0.48); g.add(ap);
+  const rail = box(0.06, 0.06, 1.15, fr); rail.position.set(0, 0.42, -0.18); rail.rotation.x = -a; g.add(rail);
+  const base = box(0.08, 0.04, 1.10, fr); base.position.set(0, 0.02, -0.20); g.add(base);
+  const col = box(0.06, 0.62, 0.06, fr); col.position.set(0, 0.31, 0.22); g.add(col);
+  for (const z of [0.25, -0.70]) { const ft = box(0.50, 0.04, 0.08, fr); ft.position.set(0, 0.02, z); g.add(ft); }
+  return shadowAll(g);
+}

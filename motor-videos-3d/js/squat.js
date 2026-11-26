@@ -46,7 +46,7 @@ export function squatPose(sk, cfg, s, cache = {}) {
       if (cfg.single && side !== cfg.single) {
         // pierna libre: sigue la inclinación de la pelvis hacia atrás, rodilla algo flexionada
         const lq = P.pelvis.q.clone();
-        const ext = deg(cfg.freeExt ?? 6), flex = deg(lerp(cfg.freeFlexTop ?? 28, cfg.freeFlexBot ?? 6, s));
+        const ext = deg(cfg.freeExtTop != null ? lerp(cfg.freeExtTop, cfg.freeExtBot, s) : (cfg.freeExt ?? 6)), flex = deg(lerp(cfg.freeFlexTop ?? 28, cfg.freeFlexBot ?? 6, s));
         const dT = rot(lq.clone().multiply(qX(ext)), V3(0, -1, 0));
         const dS = rot(lq.clone().multiply(qX(ext + flex)), V3(0, -1, 0));
         const A = P['hip_' + side].clone().add(dT.multiplyScalar(sk.LT * 0.999)).add(dS.multiplyScalar(sk.LS * 0.999));
@@ -56,6 +56,12 @@ export function squatPose(sk, cfg, s, cache = {}) {
       sk.leg(P, side, ankle[side], footQ[side], kneePole(side), toeFlexMap[side]);
     }
     const load = arms(sk, cfg, P, s);
+    if (cfg.kneeLoop) {
+      const pt = (sd, x, z) => P['thigh_' + sd].p.clone().add(rot(P['thigh_' + sd].q, V3(x, -0.36, z)));
+      const L = { o: pt('L', 0.068, 0.0), f: pt('L', 0.02, 0.058), b: pt('L', 0.02, -0.058) };
+      const R = { o: pt('R', -0.068, 0.0), f: pt('R', -0.02, 0.058), b: pt('R', -0.02, -0.058) };
+      load.band = [[L.o, L.f], [L.f, R.f], [R.f, R.o], [R.o, R.b], [R.b, L.b], [L.b, L.o]];
+    }
     return { P, load };
   };
 
@@ -472,8 +478,9 @@ export function setupProps(scene, cfg) {
   if (cfg.arms === 'overhead') props.stick = add(PR.stick(1.5, false));
   if (cfg.arms === 'stick') props.stick = add(PR.stick(1.25, true));
   if (cfg.arms === 'db') props.dbs = [add(PR.dumbbell()), add(PR.dumbbell())];
-  if (cfg.arms === 'band_gm' || cfg.hipBand) props.band = Array.from({ length: 8 }, () => add(PR.bandSegment()));
-  if (cfg.hipBand) { const po = add(PR.post(cfg.hipBand.anchor.y + 0.08)); po.position.set(0, 0, cfg.hipBand.anchor.z - 0.03); }
+  if (cfg.chains) props.chains = [1, -1].map((sx) => { const g = add(PR.chain(cfg.chains.n ?? 44)); g.userData.sx = sx; return g; });
+  if (cfg.arms === 'band_gm' || cfg.hipBand || cfg.kneeLoop) props.band = Array.from({ length: 8 }, () => add(PR.bandSegment()));
+  if (cfg.hipBand) { const po = add(PR.post(cfg.hipBand.anchor.y + 0.08)); po.position.set(cfg.hipBand.anchor.x ?? 0, 0, cfg.hipBand.anchor.z - (cfg.hipBand.anchor.x ? 0 : 0.03)); }
   if (cfg.wall) { props.wall = add(PR.wall()); props.wall.position.set(0, 0, cfg.wall.z); }
   if (['bar_high', 'bar_low', 'front', 'zercher'].includes(cfg.arms)) props.bar = add(PR.barbell());
   if (cfg.box) {
@@ -494,7 +501,7 @@ export function setupProps(scene, cfg) {
   if (cfg.split && cfg.split.mode === 'bench') {
     const b = add(PR.flatBench()); b.position.set((cfg.split.rear === 'R' ? -1 : 1) * (cfg.stance ?? 0.1), 0, cfg.split.zR + 0.07);
   }
-  if (cfg.split && cfg.split.step) {
+  if (cfg.split && cfg.split.step && !cfg.split.noBox) {
     const st = add(PR.plyoBox(0.40, cfg.split.step, 0.36)); st.position.set((cfg.split.front === 'L' ? 1 : -1) * (cfg.stance ?? 0.1), 0, cfg.split.zF + 0.06);
   }
   if (cfg.stepBox) { const b = cfg.stepBox; props.stepBox = add(PR.plyoBox(b.w ?? 0.60, b.h, b.d ?? 0.50)); props.stepBox.position.set(b.x ?? 0, 0, b.z); }
@@ -521,6 +528,22 @@ export function applyProps(props, load, cfg) {
   if (props.stick && load.stick) { props.stick.position.copy(load.stick.p); props.stick.quaternion.copy(load.stick.q); }
   if (props.dbs && load.dbs) load.dbs.forEach((b, i) => { props.dbs[i].position.copy(b); if (load.dbq) props.dbs[i].quaternion.copy(load.dbq); });
   if (props.trap && load.trap) props.trap.position.copy(load.trap.p);
+  if (props.chains && load.bar) {
+    // cadenas colgando de las mangas: la parte que sobra se amontona en el suelo
+    const step = 0.034;
+    for (const g of props.chains) {
+      const x0 = load.bar.p.x + g.userData.sx * 0.86, y0 = load.bar.p.y - 0.03, z0 = load.bar.p.z;
+      g.children.forEach((lk, i) => {
+        const d = i * step;
+        if (d < y0 - 0.01) { lk.position.set(x0, y0 - d, z0); lk.rotation.set(0, i % 2 ? Math.PI / 2 : 0, 0); }
+        else {
+          const r = d - (y0 - 0.01), a = r * 34, rad = 0.025 + 0.06 * Math.sqrt(r / 0.6);
+          lk.position.set(x0 + Math.cos(a) * rad * 0.8, 0.008 + Math.min(0.05, r * 0.05), z0 + Math.sin(a) * rad);
+          lk.rotation.set(Math.PI / 2, 0, a + (i % 2) * 0.8);
+        }
+      });
+    }
+  }
   if (props.band) {
     const up = V3(0, 1, 0);
     props.band.forEach((m, i) => {

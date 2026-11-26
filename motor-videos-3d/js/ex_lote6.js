@@ -160,3 +160,5 @@ Object.assign(EXERCISES, {
     },
   },
 });
+
+export { STU, BOX, FRONT, SCFG };

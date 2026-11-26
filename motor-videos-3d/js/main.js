@@ -10,6 +10,26 @@ import './ex_lote7.js';
 import './ex_lote8.js';
 import './ex_lote9.js';
 import './ex_lote10.js';
+import './ex_lote11.js';
+import './ex_lote12.js';
+import './ex_lote13.js';
+import './ex_lote14.js';
+import './ex_lote15.js';
+import './ex_lote16.js';
+import './ex_lote17.js';
+import './ex_lote18.js';
+import './ex_lote19.js';
+import './ex_lote20.js';
+import './groups_ts.js';
+import './ex_lote21.js';
+import './ex_lote22.js';
+import './ex_lote23.js';
+import './ex_lote24.js';
+import './ex_lote25.js';
+import './ex_lote26.js';
+import './ex_lote27.js';
+import './ex_lote28.js';
+import './ex_lote29.js';
 import { EXERCISES, GROUPS, buildTimeline, stateAt, cameraAt, viewLabelAt, labelsAt } from './exercises.js';
 import { HACK_SLED } from './props.js';
 import { makeBackground, drawOverlay } from './overlay.js';
@@ -28,6 +48,7 @@ const g2 = out.getContext('2d');
 let cur = null;
 
 function gripModes(arms, cfg = {}) {
+  if (cfg.hands) return cfg.hands;
   if (arms === 'hang' && (cfg.hold === 'kb1' || cfg.hold === 'db1')) return (cfg.loadSide || 'L') === 'L' ? ['grip', 'open'] : ['open', 'grip'];
   if (arms === 'hips') return ['open', 'open'];
   if (arms === 'forward' || arms === 'front' || arms === 'sides') return ['open', 'open'];
@@ -82,7 +103,7 @@ function setup(code) {
     };
   }
   const props = setupProps(env.scene, cfg);
-  if (cfg.free) { props.free = setupFree(env.scene, cfg, PR, cache, p0); props.list.push(...props.free.list); for (const k of ['bar', 'dbs', 'fadeMats']) if (props.free[k]) props[k] = props.free[k]; }
+  if (cfg.free || cfg.items) { props.free = setupFree(env.scene, cfg, PR, cache, p0); props.list.push(...props.free.list); for (const k of ['bar', 'dbs', 'kb', 'fadeMats']) if (props.free[k]) props[k] = props.free[k]; }
   const tl = buildTimeline(def);
 
   // encuadre
@@ -105,7 +126,7 @@ function setup(code) {
 
 function placeLights(cam) {
   const a = deg(cam.az);
-  const T = V3(0, cam.ty, cam.tz);
+  const T = V3(cam.tx ?? 0, cam.ty, cam.tz);
   const R = (v) => V3(v.x * Math.cos(a) + v.z * Math.sin(a), v.y, -v.x * Math.sin(a) + v.z * Math.cos(a));
   env.key.position.copy(T).add(R(V3(2.2, 4.4, 3.6)));
   env.key.target.position.copy(T);
@@ -128,8 +149,9 @@ function render(t, opts = {}) {
   rig.setActivation(opts.act ?? st.act);
   for (const k in rig.mats) rig.mats[k].userData.U.uReveal.value = opts.reveal ?? st.reveal;
   const cam = opts.cam ? { ...cameraAt(def, tl, t, frame), ...opts.cam } : cameraAt(def, tl, t, frame);
-  if (def.track && pose.pelvisPos) { cam.tz = pose.pelvisPos.z + (frame.tz || 0); env.disc.position.z = pose.pelvisPos.z; }
-  const T = V3(0, cam.ty, cam.tz);
+  cam.tx = 0;
+  if (def.track && pose.pelvisPos) { cam.tz = pose.pelvisPos.z + (frame.tz || 0); env.disc.position.z = pose.pelvisPos.z; if (def.trackX) { cam.tx = pose.pelvisPos.x; env.disc.position.x = pose.pelvisPos.x; } }
+  const T = V3(cam.tx, cam.ty, cam.tz);
   const a = deg(cam.az), e = deg(cam.el);
   camera.position.set(T.x + cam.dist * Math.sin(a) * Math.cos(e), T.y + cam.dist * Math.sin(e), T.z + cam.dist * Math.cos(a) * Math.cos(e));
   camera.lookAt(T);

@@ -17,17 +17,27 @@ meta = json.loads(run('node', 'dumpmeta.mjs', *codes, cwd='/home/claude/engine')
 B = f'https://cdn.jsdelivr.net/gh/sebastianlopez1660-droid/biblioteca-de-ejercicios-@{sha}/videos-3d/'
 tail = open('/home/claude/work/map_tail.txt', encoding='utf-8').read()
 parts = []
+entries = {}
 for c in codes:
     src = f'/home/claude/engine/out/{c}.mp4'
     d = float(run('ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src))
     run('ffmpeg', '-loglevel', 'error', '-y', '-ss', str(min(9, d / 3)), '-i', src, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', f'/home/claude/work/thumbs/{c}.jpg')
-    e = {'ext': B + c + '.mp4', 'thumb': f'videos/thumbs/{c}.jpg', 'prim': meta[c]['prim'], 'sec': meta[c]['sec'], 'dur': round(d, 1)}
+    run('ffmpeg', '-loglevel', 'error', '-y', '-i', f'/home/claude/work/thumbs/{c}.jpg', '-vf', 'scale=400:-2', '-q:v', '6', f'/home/claude/work/thumbs/{c}_s.jpg')
+    e = {'ext': B + c + '.mp4', 'thumb': f'videos/sprites/{codes[0]}.jpg#{codes.index(c)}/{len(codes)}', 'prim': meta[c]['prim'], 'sec': meta[c]['sec'], 'dur': round(d, 1)}
     parts.append(json.dumps(c, ensure_ascii=False) + ':' + json.dumps(e, ensure_ascii=False, separators=(',', ':')))
+    entries[c] = e
 assert tail.endswith('}}')
 new = tail[:-1] + ',' + ','.join(parts) + '}'
 last = parts[-1]
 newtail = last[last.index('"thumb"'):] + '}'
 json.dump([{'old_text': tail, 'new_text': new}], open('/home/claude/work/pub_edits.json', 'w'), ensure_ascii=False)
-json.dump([{'as': f'videos/thumbs/{c}.jpg', 'path': f'/home/claude/work/thumbs/{c}.jpg'} for c in codes], open('/home/claude/work/pub_files.json', 'w'))
+ins = []
+for c in codes: ins += ['-i', f'/home/claude/work/thumbs/{c}.jpg']
+n = len(codes)
+fc = ''.join(f'[{i}]scale=480:270[v{i}];' for i in range(n)) + ''.join(f'[v{i}]' for i in range(n)) + f'hstack=inputs={n}' if n > 1 else '[0]scale=480:270'
+os.makedirs('/home/claude/work/sprites', exist_ok=True)
+run('ffmpeg', '-loglevel', 'error', '-y', *ins, '-filter_complex', fc, '-q:v', '5', f'/home/claude/work/sprites/{codes[0]}.jpg')
+json.dump([{'as': f'videos/sprites/{codes[0]}.jpg', 'path': f'/home/claude/work/sprites/{codes[0]}.jpg'}], open('/home/claude/work/pub_files.json', 'w'))
 open('/home/claude/work/map_tail_next.txt', 'w', encoding='utf-8').write(newtail)
+json.dump(entries, open('/home/claude/work/pub_entries.json', 'w'), ensure_ascii=False)
 print('sha', sha); print('listo', len(codes))

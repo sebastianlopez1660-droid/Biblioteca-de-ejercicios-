@@ -1011,3 +1011,4 @@ export function labelsAt(def, rig, camera, alpha, W, H) {
   }
   return out;
 }
+export { SPLCFG, SPLIT_FLOOR, SPLIT_BENCH, HCFG, SINGLE };
