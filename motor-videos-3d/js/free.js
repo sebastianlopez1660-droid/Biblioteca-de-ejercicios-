@@ -327,6 +327,8 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   if (B && B.hangPlate) fp.hangPlate = add(PR.plate(0.12));
   if (B && B.wheel) fp.wheel = add(PR.plate(B.wheel.r ?? 0.10));
   if (B && B.sliderAt) fp.sliders = B.sliderAt.map(() => add(PR.slider()));
+  if (B && B.type === 'run' && B.slope) add(PR.ramp({ slope: B.slope, h0: B.rampH ?? 0.5 }));
+  if (B && B.cones) fp.cones = Array.from({ length: (B.cones.n ?? 6) * (B.cones.both === false ? 1 : 2) }, () => add(PR.cone()));
   if (B && B.hold === 'db1') fp.dbs = [add(PR.dumbbell(B.dbK ?? 1.2))];
   if (B && B.arms === 'bar') { fp.bar = add(PR.barbell()); const fade = new Set(); fp.bar.traverse(o => { if (o.isMesh && Math.abs(o.position.x) > 0.6) fade.add(o.material); }); fp.fadeMats = [...fade]; }
   if (B && (B.arms === 'db' || B.db || B.kneeLoad || B.footLoad)) fp.dbs = [add(PR.dumbbell(B.db || B.kneeLoad || B.footLoad ? 1.0 : 1.3))];
@@ -335,7 +337,7 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   if (B && B.slide) fp.sliders = [add(PR.slider()), add(PR.slider())];
   if (B && (B.carry || B.beltKb || B.handKb || B.carryOH || (B.carryFront && B.carryFront !== 'bag')) && B.carry !== 'both') fp.kb = add(PR.kettlebell());
   if (B && B.carry === 'both') fp.dbs = [add(PR.dumbbell(1.3)), add(PR.dumbbell(1.3))];
-  if (B && (B.trx || B.hipBand || B.kneeBand || B.bands || B.cable || B.band || B.anchor || B.kneeBandLoop || B.ankleBand || B.bandAnkle || B.bandAnkles || B.beltBand)) fp.fband = Array.from({ length: 12 }, () => add(PR.bandSegment(B.trx ? 0x16181a : (B.cable && !B.cableBand ? 0xb9bec4 : undefined), B.trx ? 0.012 : (B.cable && !B.cableBand ? 0.0065 : undefined))));
+  if (B && (B.trx || B.hipBand || B.kneeBand || B.bands || B.cable || B.band || B.anchor || B.kneeBandLoop || B.ankleBand || B.bandAnkle || B.bandAnkles || B.beltBand || B.tether)) fp.fband = Array.from({ length: 12 }, () => add(PR.bandSegment((B.trx || B.tether) ? 0x16181a : (B.cable && !B.cableBand ? 0xb9bec4 : undefined), (B.trx || B.tether) ? 0.012 : (B.cable && !B.cableBand ? 0.0065 : undefined))));
   for (const k in (B && B.machine ? { m: 1 } : {})) fp.machine = add(PR[B.machine.kind](B.machine));
   return fp;
 }
@@ -362,6 +364,7 @@ export function applyFree(fp, load) {
   });
   if (fp.handles && load.dyn && load.dyn.handles) fp.handles.forEach((m, i) => { const h = load.dyn.handles[i]; if (h) { m.position.copy(h.p); m.quaternion.copy(h.q); } });
   if (fp.sidePlates && load.dyn && load.dyn.sidePlates) fp.sidePlates.forEach((m, i) => m.position.copy(load.dyn.sidePlates[i]));
+  if (fp.cones && load.dyn && load.dyn.cones) fp.cones.forEach((m, i) => { const c = load.dyn.cones[i]; if (c) m.position.copy(c); });
   if (fp.wheel && load.dyn && load.dyn.wheel) { fp.wheel.position.copy(load.dyn.wheel); fp.wheel.rotation.set(load.dyn.wheel.z / 0.10, 0, 0); }
   if (fp.hangPlate && load.dyn && load.dyn.hangPlate) { fp.hangPlate.position.copy(load.dyn.hangPlate); fp.hangPlate.rotation.set(0, Math.PI / 2, 0); }
   if (fp.plate && load.dyn && load.dyn.plate) { fp.plate.position.copy(load.dyn.plate.p); fp.plate.quaternion.copy(load.dyn.plate.q); }
@@ -1026,8 +1029,11 @@ function kfInterp(keys, u) {
 function jumpKF(sk, cfg, s) {
   const B = cfg.free, AH = sk.ANKLE_H;
   let K;
-  if (cfg._kind === 'rep' && cfg._up) K = kfInterp(B.up, 1 - s);
-  else K = kfInterp(B.down, s);
+  const ri = cfg._rep ?? 0;
+  const DN = B.repDown ? B.repDown[ri % B.repDown.length] : B.down;
+  const UPK = B.repUp ? B.repUp[ri % B.repUp.length] : B.up;
+  if (cfg._kind === 'rep' && cfg._up) K = kfInterp(UPK, 1 - s);
+  else K = kfInterp(DN, s);
   const w = B.stance ?? 0.14, toe = deg(B.toeOut ?? 8);
   const zOff = (B.travel ?? 0) * Math.min(cfg._rep ?? 0, B.travelMax ?? 9), xOff = (B.travelX ?? 0) * Math.min(cfg._rep ?? 0, B.travelMax ?? 9);
   const A = {}, fq = {};
@@ -1243,7 +1249,108 @@ function kfPose(sk, cfg, s) {
   return { P, load, pelvisPos, lean: ro[0] };
 }
 
-const FAM_EXTRA = { kfPose, jumpKF, calf, tke, legPressCalf, legPress, footSeat, gait, balance, sideLying, landing };
+
+// ------------------------------------------------------------------ carrera (cinta: la pelvis no avanza, el suelo y los conos sí)
+// Perfiles por tiempo: speeds [[t, v], ...] en m/s y leans [[t, grados], ...]; loop repite el perfil.
+function profAt(pr, t, loop) {
+  if (!pr || !pr.length) return 0;
+  if (loop) t = t % loop;
+  if (t <= pr[0][0]) return pr[0][1];
+  for (let i = 1; i < pr.length; i++) if (t <= pr[i][0]) { const a = pr[i - 1], b = pr[i]; return lerp(a[1], b[1], smooth((t - a[0]) / Math.max(1e-6, b[0] - a[0]))); }
+  return pr[pr.length - 1][1];
+}
+function run(sk, cfg, s, cache) {
+  const B = cfg.free, AH = sk.ANKLE_H;
+  const t = cfg._t ?? 0, loop = B.loop ?? 0;
+  const vmax = B.speed ?? 6;
+  const vAt = (tt) => (B.speeds ? profAt(B.speeds, tt, loop) : vmax * smooth(clamp((tt - 0.4) / 1.2, 0, 1)));
+  const cadAt = (tt) => { const v = vAt(tt); return B.cadence ?? ((B.cad0 ?? 2.2) + (B.cadK ?? 0.22) * v); };
+  // fase acumulada del ciclo de pierna (integración numérica, con caché por instancia)
+  const dt = 1 / 120;
+  if (!cache.run || cache.run.t > t) cache.run = { t: 0, ph: 0 };
+  while (cache.run.t + dt <= t) { const tt = cache.run.t + dt / 2; cache.run.ph += cadAt(tt) / 2 * dt; cache.run.t += dt; }
+  const ph = cache.run.ph + cadAt(t) / 2 * (t - cache.run.t);
+  const v = vAt(t), cad = cadAt(t), T = 2 / cad;
+  const still = v < 0.05 && B.inPlace === undefined;
+  const beta = B.stance ?? clamp(0.62 - 0.045 * v, 0.24, 0.6);
+  const a = (B.inPlace ? 0 : v * beta * T / 2) * (B.backward ? -1 : 1);
+  const dir = B.backward ? -1 : 1;
+  const knee = B.knee ?? clamp(0.45 + 0.08 * v, 0.4, 1.0), heel = B.heel ?? clamp(0.30 + 0.07 * v, 0.25, 0.95);
+  const W = B.width ?? 0.09;
+  const act = still ? 0 : (B.inPlace ? 1 : clamp(v / 1.5, 0, 1));
+  const foot = {};
+  let stanceW = null;
+  for (const sd of ['L', 'R']) {
+    const f = ((ph + (sd === 'L' ? 0 : 0.5)) % 1 + 1) % 1;
+    let z, y = 0, pitch = 0, sw = false;
+    if (f < beta) { const w = f / beta; z = a - 2 * a * w; pitch = B.inPlace ? 0 : 14 * smooth(clamp((w - 0.6) / 0.4, 0, 1)); stanceW = stanceW ?? w; }
+    else {
+      sw = true;
+      const u = (f - beta) / (1 - beta);
+      // trayectoria del tobillo respecto a la pelvis: talón atrás → rodilla delante → apoyo
+      const pts = [[0, -a, 0], [0.32, -a * 0.35 - 0.10 * dir * act, (0.05 + heel * 0.42) * act], [0.66, (0.10 + 0.20 * knee) * dir * act, (0.06 + knee * 0.30) * act], [1, a, 0]];
+      let i = 1; while (u > pts[i][0]) i++;
+      const p0 = pts[i - 1], p1 = pts[i], k = smooth((u - p0[0]) / (p1[0] - p0[0]));
+      z = lerp(p0[1], p1[1], k); y = lerp(p0[2], p1[2], k);
+      pitch = -12 * Math.sin(Math.PI * u) * act + (u < 0.3 ? 30 * (1 - u / 0.3) * act : 0);
+    }
+    if (B.lateralStep) z = 0;
+    foot[sd] = { z, y, pitch, sw };
+  }
+  const lean = deg(B.leans ? profAt(B.leans, t, loop) : (B.lean ?? (3 + 1.4 * v)));
+  const twist = (B.twist ?? 5) * Math.sin(2 * Math.PI * ph) * act;
+  // giro del cuerpo (salidas laterales), bajada de cadera (frenadas) y pendiente (rampa)
+  const yawD = B.yaws ? profAt(B.yaws, t, loop) : (B.yaw ?? 0), qy = qY(deg(yawD));
+  const dyNow = B.dys ? profAt(B.dys, t, loop) : (B.dy ?? 0);
+  const Wn = B.widths ? profAt(B.widths, t, loop) : W;
+  const sl = Math.tan(deg(B.slope ?? 0)), h0 = B.slope ? (B.rampH ?? 0.5) : 0;
+  const r = uprightR(lean * dir, { neckK: 0.6, twist: -twist, yaw: yawD });
+  const q = r.pelvis;
+  // altura de pelvis: bajada en el apoyo y vuelo
+  const y0 = maxPelvisY(sk, q, 0, 0, 'L', rot(qy, V3(Wn, AH, 0)), B.k ?? clamp(0.975 - 0.006 * v, 0.93, 0.975));
+  const bob = stanceW !== null ? -(B.drop ?? (0.012 + 0.004 * v)) * Math.sin(Math.PI * stanceW) * act : (B.fly ?? 0.025) * act;
+  const pelvisPos = V3(0, y0 + bob + dyNow + h0 + (B.pz ?? 0) * sl, B.pz ?? 0);
+  const P = sk.trunk(pelvisPos, r);
+  for (const sd of ['L', 'R']) {
+    const F = foot[sd], sx = sxOf(sd);
+    const fq = qy.clone().multiply(qY(sx * deg(B.toeOut ?? 4))).multiply(qX(deg(F.pitch)));
+    const off = rot(qy, V3(sx * Wn, 0, F.z + (B.footZ ?? 0.04) * dir));
+    const A = V3(off.x, AH + F.y + h0, pelvisPos.z + off.z);
+    A.y += A.z * sl;
+    sk.leg(P, sd, A, fq, rot(qy, V3(sx * 0.06, 0.1, dir)), 0);
+  }
+  // brazos: codo a 90°, braceo contrario a las piernas
+  const armA = deg(B.arm ?? clamp(25 + 6 * v, 25, 70)) * act;
+  for (const sd of ['L', 'R']) {
+    const sx = sxOf(sd), S = sk.shoulder(P, sd);
+    const th = armA * Math.cos(2 * Math.PI * (ph + (sd === 'L' ? 0.5 : 0)) - 0.6) * dir;
+    const cq = P.chest.q;
+    const d1 = rot(cq, V3(sx * 0.12, -Math.cos(th), Math.sin(th)).normalize());
+    const el = deg(B.elbow ?? 85);
+    const d2 = rot(cq, V3(0, -Math.cos(th + el), Math.sin(th + el)));
+    const Wr = S.clone().add(d1.clone().multiplyScalar(sk.LUA * 0.999)).add(d2.clone().multiplyScalar(sk.LFA * 0.95));
+    armTo(sk, P, sd, Wr, d1.clone().sub(d2).normalize(), rot(cq, V3(-sx, 0, 0)), d2.clone());
+  }
+  const load = { mass: 0, fband: [], dyn: {} };
+  if (B.tether) for (const sd of (B.tether.two ? ['L', 'R'] : ['C'])) {
+    const sx = sd === 'C' ? 0 : sxOf(sd);
+    const from = P.pelvis.p.clone().add(rot(P.pelvis.q, V3(sx * 0.12, -0.02, -0.10)));
+    load.fband.push([from, V3(B.tether.to[0] + sx * 0.10, B.tether.to[1], B.tether.to[2])]);
+  }
+  // conos que pasan a los lados para dar sensación de avance
+  if (B.cones) {
+    const n = B.cones.n ?? 6, d = B.cones.d ?? 5, xx = B.cones.x ?? 1.4;
+    const dist = (cache.run.dist ??= { t: 0, z: 0 });
+    if (dist.t > t) { dist.t = 0; dist.z = 0; }
+    while (dist.t + dt <= t) { dist.z += vAt(dist.t + dt / 2) * dt * dir; dist.t += dt; }
+    const off = dist.z + vAt(t) * (t - dist.t) * dir;
+    load.dyn.cones = [];
+    for (let i = 0; i < n; i++) { const z = ((i * d - off) % (n * d) + n * d) % (n * d) - d; for (const sxx of (B.cones.both === false ? [1] : [1, -1])) load.dyn.cones.push(V3(sxx * xx, Math.max(0, h0 + z * sl), z)); }
+  }
+  return { P, load, pelvisPos, lean };
+}
+
+const FAM_EXTRA = { kfPose, jumpKF, calf, tke, legPressCalf, legPress, footSeat, gait, balance, sideLying, landing, run };
 
 const FAM = { stepUp, stepDown, supine, stand1, quadruped, nordic, prone, seated, ...FAM_EXTRA };
 export function freePose(sk, cfg, s, cache = {}) {

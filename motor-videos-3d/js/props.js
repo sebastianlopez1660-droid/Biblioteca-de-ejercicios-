@@ -576,3 +576,43 @@ export function hurdle(o = {}) {
   const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, w, 14), mat); bar.rotation.z = Math.PI / 2; bar.position.y = h; g.add(bar);
   return shadowAll(g);
 }
+
+// Cono de señalización
+export function cone(o = {}) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: o.color ?? 0xf28c28, roughness: 0.55 });
+  const c = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.23, 20), mat); c.position.y = 0.125; g.add(c);
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.015, 0.20), mat); b.position.y = 0.0075; g.add(b);
+  return shadowAll(g);
+}
+
+// rampa/cuesta: cuña cuyo plano superior pasa por y = h0 + z·tan(pendiente) (subida si slope > 0)
+export function ramp(o = {}) {
+  const sl = Math.tan((o.slope ?? 8) * Math.PI / 180), h0 = o.h0 ?? 0.5, w = o.w ?? 2.4, far = o.far ?? 22;
+  const za = sl > 0 ? -h0 / sl : -far, zb = sl > 0 ? far : h0 / -sl;
+  const yAt = (z) => Math.max(0, h0 + z * sl);
+  const sh = new THREE.Shape();
+  sh.moveTo(za, 0); sh.lineTo(zb, 0); sh.lineTo(zb, yAt(zb)); sh.lineTo(za, yAt(za)); sh.lineTo(za, 0);
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: w, bevelEnabled: false });
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: o.color ?? 0x3a3f44, roughness: 0.9 }));
+  m.rotation.y = -Math.PI / 2; m.position.x = w / 2;
+  m.castShadow = false; m.receiveShadow = true;
+  const g = new THREE.Group(); g.add(m);
+  return g;
+}
+
+// paracaídas de resistencia: cúpula abierta hacia +Z con cordinos que convergen en (0, 0, +lines)
+export function chute(o = {}) {
+  const g = new THREE.Group(), r = o.r ?? 0.55, L = o.lines ?? 0.7;
+  const m = new THREE.MeshStandardMaterial({ color: o.color ?? 0xb3262b, roughness: 0.7, side: THREE.DoubleSide });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), m);
+  dome.rotation.x = -Math.PI / 2; dome.scale.set(1, 0.75, 1); dome.castShadow = true; g.add(dome);
+  const rimZ = -r * 0.75 * Math.cos(Math.PI * 0.42), rimR = r * Math.sin(Math.PI * 0.42);
+  const lm = new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.8 });
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2, A = new THREE.Vector3(Math.cos(a) * rimR, Math.sin(a) * rimR, rimZ), B = new THREE.Vector3(0, 0, L);
+    const len = A.distanceTo(B), c = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, len, 4), lm);
+    c.position.copy(A).add(B).multiplyScalar(0.5); c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); g.add(c);
+  }
+  return g;
+}

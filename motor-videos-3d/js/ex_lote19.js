@@ -249,3 +249,4 @@ Object.assign(EXERCISES, {
     },
   },
 });
+export { dropKeys, stepBackUp };
