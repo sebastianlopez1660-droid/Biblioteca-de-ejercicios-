@@ -27,3 +27,4 @@ def('Transverso abdominal', ['transverso', 'oblicuos'], chest([0.12, 0.99, 0.06]
 def('Cuadrado lumbar', ['cuadrado_lumbar'], chest([0.07, 1.04, -0.09], [0.4, 0, -1], 'lumbar'));
 def('Flexores de cadera', ['flexores_cadera'], chest([0.09, 0.90, 0.10], [0.2, 0, 1], 'pelvis'));
 def('Esternocleidomastoideo', ['esternocleidomastoideo'], chest([0.04, 1.52, 0.03], [0.4, 0, 1], 'neck'));
+def('Trapecio inferior', ['trapecio_inferior'], chest([0.06, 1.22, -0.10], [0.1, 0, -1]));

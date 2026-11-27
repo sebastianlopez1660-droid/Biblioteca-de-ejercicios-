@@ -542,3 +542,24 @@ export function romanChair(o = {}) {
   for (const z of [0.25, -0.70]) { const ft = box(0.50, 0.04, 0.08, fr); ft.position.set(0, 0.02, z); g.add(ft); }
   return shadowAll(g);
 }
+
+// disco suelto (eje a lo largo de X)
+export function plate(r = 0.225) {
+  const g = new THREE.Group();
+  const p = cylX(r, 0.045, M.rubber(), 56); g.add(p);
+  const rim = cylX(r + 0.004, 0.026, M.rubberRim(), 56); g.add(rim);
+  const hub = cylX(0.034, 0.05, M.steelDark(), 24); g.add(hub);
+  return shadowAll(g);
+}
+
+// banco Scott (predicador): asiento y apoyo inclinado delante del pecho
+export function preacher(o = {}) {
+  const g = new THREE.Group(); const fr = M.frame(); const pad = M.pad();
+  const seat = box(0.36, 0.08, 0.34, pad, 0.03); seat.position.set(0, (o.seatH ?? 0.47) - 0.04, -0.02); g.add(seat);
+  const pd = box(0.44, 0.07, 0.36, pad, 0.03); pd.position.set(0, o.padY ?? 0.98, o.padZ ?? 0.36); pd.rotation.x = -(o.padAng ?? 45) * Math.PI / 180; g.add(pd);
+  const col = box(0.06, (o.padY ?? 0.98) - 0.1, 0.06, fr); col.position.set(0, ((o.padY ?? 0.98) - 0.1) / 2, (o.padZ ?? 0.36) + 0.12); g.add(col);
+  const col2 = box(0.06, 0.40, 0.06, fr); col2.position.set(0, 0.20, -0.02); g.add(col2);
+  const base = box(0.08, 0.04, 0.70, fr); base.position.set(0, 0.02, 0.20); g.add(base);
+  for (const z of [-0.12, 0.52]) { const ft = box(0.50, 0.04, 0.08, fr); ft.position.set(0, 0.02, z); g.add(ft); }
+  return shadowAll(g);
+}

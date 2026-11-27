@@ -140,12 +140,12 @@ function legStraight(sk, P, sd, dir, front, plant = 15) {
   const q = basisQuat(d.clone().negate(), front);
   sk.leg(P, sd, A, q.multiply(qX(deg(plant))), front, 0);
 }
-function armTo(sk, P, sd, wrist, pole, palm, fingers) {
-  const S = sk.shoulder(P, sd);
+function armTo(sk, P, sd, wrist, pole, palm, fingers, shift) {
+  const S = sk.shoulder(P, sd, shift || V3());
   sk.armIK(P, sd, S, wrist, pole, fingers.clone().cross(palm).multiplyScalar(sd === 'L' ? 1 : -1), handOpenQ(sd, palm, fingers));
 }
-function gripTo(sk, P, sd, B, axis, palm, pole) {
-  const S = sk.shoulder(P, sd);
+function gripTo(sk, P, sd, B, axis, palm, pole, shift) {
+  const S = sk.shoulder(P, sd, shift || V3());
   const g = handGrip(sd, B, axis, palm);
   sk.armIK(P, sd, S, g.wrist, pole, axis, g.q);
 }
@@ -321,14 +321,20 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   if (B && B.rods) fp.rods = B.rods.map((r) => add(PR.rod(r.r ?? 0.02, r.color ?? 0x2a2d31)));
   if (B && B.handles) fp.handles = B.handles.map(() => add(PR.handle()));
   if (B && B.plates) fp.plates = B.plates.map((pl) => { const g = PR.barbell({ half: 0.75, plates: 1 }); return add(g); });
-  if (B && B.hold === 'db') fp.dbs = [add(PR.dumbbell(B.dbK ?? 1)), add(PR.dumbbell(B.dbK ?? 1))];
+  if (B && B.hold === 'db') fp.dbs = (B.holdSides || ['L', 'R']).map(() => add(PR.dumbbell(B.dbK ?? 1)));
+  if (B && B.hold === 'plate') fp.plate = add(PR.plate());
+  if (B && B.sidePlates) fp.sidePlates = [add(PR.plate(0.16)), add(PR.plate(0.16))];
+  if (B && B.hangPlate) fp.hangPlate = add(PR.plate(0.12));
+  if (B && B.wheel) fp.wheel = add(PR.plate(B.wheel.r ?? 0.10));
+  if (B && B.sliderAt) fp.sliders = B.sliderAt.map(() => add(PR.slider()));
   if (B && B.hold === 'db1') fp.dbs = [add(PR.dumbbell(B.dbK ?? 1.2))];
   if (B && B.arms === 'bar') { fp.bar = add(PR.barbell()); const fade = new Set(); fp.bar.traverse(o => { if (o.isMesh && Math.abs(o.position.x) > 0.6) fade.add(o.material); }); fp.fadeMats = [...fade]; }
   if (B && (B.arms === 'db' || B.db || B.kneeLoad || B.footLoad)) fp.dbs = [add(PR.dumbbell(B.db || B.kneeLoad || B.footLoad ? 1.0 : 1.3))];
   if (B && B.ankleWeight) fp.ankleW = add(PR.ankleWeight());
   if (B && (B.type === 'legPressCalf' || B.type === 'legPress')) fp.sled = add(PR.legPressSled());
   if (B && B.slide) fp.sliders = [add(PR.slider()), add(PR.slider())];
-  if (B && (B.carry || B.beltKb || B.handKb)) fp.kb = add(PR.kettlebell());
+  if (B && (B.carry || B.beltKb || B.handKb) && B.carry !== 'both') fp.kb = add(PR.kettlebell());
+  if (B && B.carry === 'both') fp.dbs = [add(PR.dumbbell(1.3)), add(PR.dumbbell(1.3))];
   if (B && (B.trx || B.hipBand || B.kneeBand || B.bands || B.cable || B.band || B.anchor || B.kneeBandLoop || B.ankleBand || B.bandAnkle || B.bandAnkles)) fp.fband = Array.from({ length: 12 }, () => add(PR.bandSegment(B.trx ? 0x16181a : (B.cable && !B.cableBand ? 0xb9bec4 : undefined), B.trx ? 0.012 : (B.cable && !B.cableBand ? 0.0065 : undefined))));
   for (const k in (B && B.machine ? { m: 1 } : {})) fp.machine = add(PR[B.machine.kind](B.machine));
   return fp;
@@ -355,6 +361,10 @@ export function applyFree(fp, load) {
     m.position.copy(a).add(b).multiplyScalar(0.5); m.scale.set(1, len, 1); m.quaternion.setFromUnitVectors(V3(0, 1, 0), dv.normalize());
   });
   if (fp.handles && load.dyn && load.dyn.handles) fp.handles.forEach((m, i) => { const h = load.dyn.handles[i]; if (h) { m.position.copy(h.p); m.quaternion.copy(h.q); } });
+  if (fp.sidePlates && load.dyn && load.dyn.sidePlates) fp.sidePlates.forEach((m, i) => m.position.copy(load.dyn.sidePlates[i]));
+  if (fp.wheel && load.dyn && load.dyn.wheel) { fp.wheel.position.copy(load.dyn.wheel); fp.wheel.rotation.set(load.dyn.wheel.z / 0.10, 0, 0); }
+  if (fp.hangPlate && load.dyn && load.dyn.hangPlate) { fp.hangPlate.position.copy(load.dyn.hangPlate); fp.hangPlate.rotation.set(0, Math.PI / 2, 0); }
+  if (fp.plate && load.dyn && load.dyn.plate) { fp.plate.position.copy(load.dyn.plate.p); fp.plate.quaternion.copy(load.dyn.plate.q); }
   if (fp.sled && load.dyn && load.dyn.sled) { fp.sled.position.copy(load.dyn.sled.p); fp.sled.quaternion.copy(load.dyn.sled.q); }
 }
 
@@ -755,7 +765,7 @@ function gait(sk, cfg, s, cache) {
   const swingA = Math.sin(2 * Math.PI * t / T) * amp;
   for (const sd of ['L', 'R']) {
     const sx = sxOf(sd), S = sk.shoulder(P, sd);
-    if (B.carry && sd === B.carry) continue;
+    if (B.carry && (sd === B.carry || B.carry === 'both')) continue;
     let W2;
     if (B.tandem) W2 = S.clone().add(side.clone().multiplyScalar(sx * 0.52)).add(V3(0, -0.06, 0));
     else if (B.armsHips) { W2 = null; }
@@ -766,7 +776,16 @@ function gait(sk, cfg, s, cache) {
     if (W2) armTo(sk, P, sd, W2, side.clone().multiplyScalar(sx * 0.4).add(fwd.clone().multiplyScalar(-0.6)), B.tandem ? V3(0, -1, 0) : side.clone().multiplyScalar(-sx), B.tandem ? side.clone().multiplyScalar(sx) : fwd.clone());
   }
   if (B.armsHips) Object.assign(load, squatArms(sk, { ...cfg, arms: 'hips' }, P, s), { fband: [], dyn: {} });
-  if (B.carry) {
+  if (B.carry === 'both') {
+    load.dbs = [];
+    for (const sd of ['L', 'R']) {
+      const sx = sxOf(sd), S = sk.shoulder(P, sd, V3(0, B.shr ?? 0, 0));
+      const G = S.clone().add(V3(0, -0.645, 0)).add(side.clone().multiplyScalar(sx * 0.08));
+      gripTo(sk, P, sd, G, fwd.clone(), side.clone().multiplyScalar(-sx), side.clone().multiplyScalar(sx), V3(0, B.shr ?? 0, 0));
+      load.dbs.push(G);
+    }
+    load.dbq = qY(yaw + Math.PI / 2); load.mass = 40;
+  } else if (B.carry) {
     const sd = B.carry, sx = sxOf(sd), S = sk.shoulder(P, sd);
     const G = S.clone().add(V3(0, -0.60, 0)).add(side.clone().multiplyScalar(sx * 0.10));
     gripTo(sk, P, sd, G, fwd.clone(), side.clone().multiplyScalar(-sx), side.clone().multiplyScalar(sx));
@@ -905,6 +924,11 @@ function sideLying(sk, cfg, s) {
   armTo(sk, P, up, Wu, V3(0, 0.3, 1), V3(0, -1, 0), head.clone());
   const load = { mass: 0, fband: [], dyn: {} };
   if (B.kneeBand) load.fband.push(...kneeBand(P));
+  if (B.dbThigh) {
+    const k = P['knee_' + up], h = P['hip_' + up];
+    load.dbs = [k.clone().lerp(h, 0.40).add(V3(0, 0.075, 0))];
+    load.dbq = new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), V3(0, 0, 1));
+  }
   return { P, load, pelvisPos, lean: 0 };
 }
 
@@ -1080,11 +1104,12 @@ function kfMirror(K) {
 }
 function kfPose(sk, cfg, s) {
   const B = cfg.free, AH = sk.ANKLE_H;
-  if (!B._norm) { B.keys = kfNorm(B.keys); if (B.up) B.up = kfNorm(B.up); B._norm = true; }
+  if (!B._norm) { B.keys = kfNorm(B.keys); if (B.up) B.up = kfNorm(B.up); if (B.repKeys) B.repKeys = B.repKeys.map(kfNorm); B._norm = true; }
+  const KEYS = (B.repKeys && cfg._kind === 'rep') ? B.repKeys[(cfg._rep ?? 0) % B.repKeys.length] : B.keys;
   let K;
-  if (B.loop) K = kfAll(B.keys, ((cfg._t ?? 0) / B.loop) % 1);
+  if (B.loop) K = kfAll(KEYS, ((cfg._t ?? 0) / B.loop) % 1);
   else if (cfg._kind === 'rep' && cfg._up && B.up) K = kfAll(B.up, 1 - s);
-  else K = kfAll(B.keys, s);
+  else K = kfAll(KEYS, s);
   if (B.alt && ((cfg._rep ?? 0) % 2 === 1) && cfg._kind === 'rep') K = kfMirror(K);
   const zOff = (B.travel ?? 0) * Math.min(cfg._rep ?? 0, B.travelMax ?? 9);
   const ro = (K.rot || [0, 0, 0]).map(deg), sp = (K.sp || [0, 0, 0]).map(deg), nk = (K.nk || [0, 0]).map(deg);
@@ -1097,7 +1122,7 @@ function kfPose(sk, cfg, s) {
   const P = sk.trunk(pelvisPos, r);
   for (const sd of ['L', 'R']) {
     const sx = sxOf(sd);
-    if (K['l' + sd]) { const a = K['l' + sd]; legByAngles(sk, P, sd, a[0], a[1], a[2] ?? 0, a[3] ?? 0); continue; }
+    if (K['l' + sd]) { const a = K['l' + sd]; legByAngles(sk, P, sd, a[0], a[1], a[2] ?? 0, a[3] ?? 0, a[4] ?? 0); continue; }
     const f = K[sd]; if (!f) continue;
     const fq = qY(deg(f[4] ?? sx * 6)).multiply(qX(deg(f[3] ?? 0)));
     const pole = K['k' + sd] ? V3(...K['k' + sd]) : rot(fq, V3(sx * 0.08, 0, 1));
@@ -1106,8 +1131,9 @@ function kfPose(sk, cfg, s) {
   let armLoad = null;
   const grips = {};
   if (B.arms) armLoad = squatArms(sk, { ...cfg, arms: B.arms }, P, s);
+  const shift = (K.shr || K.shz) ? V3(0, K.shr ?? 0, -(K.shr ?? 0) * 0.3 + (K.shz ?? 0)) : null;
   for (const sd of (B.arms ? [] : ['L', 'R'])) {
-    const sx = sxOf(sd), S = sk.shoulder(P, sd);
+    const sx = sxOf(sd), S = sk.shoulder(P, sd, shift || V3());
     let W, pole, palm, fing;
     if (K['h' + sd]) {
       const h = K['h' + sd]; W = V3(h[0], h[1], h[2] + zOff);
@@ -1118,7 +1144,7 @@ function kfPose(sk, cfg, s) {
       const d1 = rot(cq, rot(qZ(sx * deg(a[1])).multiply(qX(-deg(a[0]))), V3(0, -1, 0)));
       const bendAx = rot(cq, rot(qZ(sx * deg(a[1])).multiply(qX(-deg(a[0]))), V3(1, 0, 0)));
       const d2 = d1.clone().applyAxisAngle(bendAx, -deg(a[2]));
-      const gOff = (B.hold === 'bar' || B.hold === 'db' || B.hold === 'db1' || B.hold === 'grip') ? 0.10 : 0;
+      const gOff = (B.hold === 'bar' || B.hold === 'db' || B.hold === 'db1' || B.hold === 'grip' || B.hold === 'plate') ? 0.10 : 0;
       W = S.clone().add(d1.clone().multiplyScalar(sk.LUA * 0.999)).add(d2.clone().multiplyScalar(sk.LFA * 0.999 + gOff));
       pole = d1.clone().sub(d2).normalize();
       if (pole.lengthSq() < 1e-4) pole = rot(cq, V3(0, 0, -1));
@@ -1126,27 +1152,36 @@ function kfPose(sk, cfg, s) {
     const pp = K['p' + sd];
     palm = pp ? V3(pp[0], pp[1], pp[2]) : V3(-sx, 0, 0);
     fing = pp ? V3(pp[3], pp[4], pp[5]) : W.clone().sub(S).normalize();
-    if (B.hold === 'bar' || B.hold === 'db' || B.hold === 'db1' || B.hold === 'grip') {
+    if ((B.hold === 'bar' || B.hold === 'db' || B.hold === 'db1' || B.hold === 'grip' || B.hold === 'plate') && (!B.holdSides || B.holdSides.includes(sd))) {
       // W es el punto de agarre; el eje del implemento va en pp[3..5] (por defecto X)
       const ax = pp ? V3(pp[3], pp[4], pp[5]).normalize() : V3(1, 0, 0);
-      gripTo(sk, P, sd, W, ax, palm.normalize(), pole.normalize());
+      gripTo(sk, P, sd, W, ax, palm.normalize(), pole.normalize(), shift);
       grips[sd] = W.clone();
-    } else armTo(sk, P, sd, W, pole.normalize(), palm.normalize(), fing.normalize());
+    } else armTo(sk, P, sd, W, pole.normalize(), palm.normalize(), fing.normalize(), shift);
   }
   const load = { ...(armLoad || {}), mass: 0, fband: [], dyn: {} };
   if (B.hold === 'bar' && grips.L && grips.R) load.bar = { p: grips.L.clone().add(grips.R).multiplyScalar(0.5), q: new THREE.Quaternion() };
+  if (K.hand) load.hands = (B.handSides || ['L', 'R']).length === 2 ? [K.hand, K.hand] : (B.handSides[0] === 'L' ? [K.hand, B.otherHand || 'open'] : [B.otherHand || 'open', K.hand]);
+  if (B.sidePlates) load.dyn.sidePlates = ['L', 'R'].map((sd) => (grips[sd] || P['wrist_' + sd]).clone().add(V3(0, -0.11, 0)));
+  if (B.hangPlate && K.hp) load.dyn.hangPlate = V3(...K.hp);
+  if (B.hold === 'plate' && grips.L && grips.R) {
+    const c = grips.L.clone().add(grips.R).multiplyScalar(0.5), n = K.pn ? V3(...K.pn).normalize() : V3(0, 0, 1);
+    load.dyn.plate = { p: c.add(V3(0, -0.13, 0)), q: new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), n) };
+  }
   if (B.hold === 'db1' && grips.L && grips.R) {
     const ax = K.dax ? V3(...K.dax) : (B.dbAxis ? V3(...B.dbAxis) : V3(0, 1, 0));
     load.dbs = [grips.L.clone().add(grips.R).multiplyScalar(0.5)]; load.dbq = new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), ax.normalize());
   }
-  if (B.hold === 'db' && grips.L && grips.R) {
-    const ax = K.pL ? V3(K.pL[3], K.pL[4], K.pL[5]).normalize() : V3(1, 0, 0);
-    load.dbs = [grips.L, grips.R]; load.dbq = new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), ax);
+  if (B.hold === 'db') {
+    const sides = B.holdSides || ['L', 'R'], s0 = sides[0];
+    const ax = K['p' + s0] ? V3(K['p' + s0][3], K['p' + s0][4], K['p' + s0][5]).normalize() : V3(1, 0, 0);
+    load.dbs = sides.map((sd) => grips[sd]).filter(Boolean); load.dbq = new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), ax);
   }
   const ptOf = (v) => {
     if (typeof v !== 'string') return V3(...v);
     if (v === 'bar') return (grips.L && grips.R) ? grips.L.clone().add(grips.R).multiplyScalar(0.5) : P.chest.p.clone();
     if (v === 'beltL' || v === 'beltR') return P.pelvis.p.clone().add(rot(P.pelvis.q, V3(v === 'beltL' ? 0.12 : -0.12, -0.03, 0.06)));
+    if (v.startsWith('K:')) return V3(...K[v.slice(2)]);
     if (v === 'kbTop') return P.pelvis.p.clone().add(V3(0, -0.36, 0.10));
     const sd = v.slice(1);
     if (v[0] === 'h') return (grips[sd] || P['wrist_' + sd]).clone();
@@ -1170,6 +1205,9 @@ function kfPose(sk, cfg, s) {
     const pp = K['p' + sd], ax = pp ? V3(pp[3], pp[4], pp[5]).normalize() : V3(1, 0, 0);
     return { p: (grips[sd] || P['wrist_' + sd]).clone(), q: new THREE.Quaternion().setFromUnitVectors(V3(1, 0, 0), ax) };
   });
+  if (B.wheel && B.wheelAt) load.dyn.wheel = ptOf(B.wheelAt);
+  if (B.sliderAt) load.dyn.sliders = B.sliderAt.map((v) => ptOf(v).setY(0));
+  if (B.ball && B.ballAt) load.dyn.ball = { p: ptOf(B.ballAt), q: new THREE.Quaternion() };
   if (B.bands) for (const bd of B.bands) load.fband.push([ptOf(bd.anchor), bd.to ? ptOf(bd.to) : (grips[bd.hand] || P['wrist_' + bd.hand]).clone()]);
   if (B.kneeBand) load.fband.push(...kneeBand(P));
   if (B.bandAnkle) load.fband.push([V3(...B.bandAnkle.anchor), P['ankle_' + B.bandAnkle.side].clone().add(V3(0, 0.02, 0.02))]);
