@@ -563,3 +563,16 @@ export function preacher(o = {}) {
   for (const z of [-0.12, 0.52]) { const ft = box(0.50, 0.04, 0.08, fr); ft.position.set(0, 0.02, z); g.add(ft); }
   return shadowAll(g);
 }
+
+// Valla baja de pliometría: dos patas y travesaño a lo ancho (eje X)
+export function hurdle(o = {}) {
+  const h = o.h ?? 0.30, w = o.w ?? 0.80;
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: o.color ?? 0xd9a21b, roughness: 0.6 });
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, h, 12), M.frame()); leg.position.set(sx * w / 2, h / 2, 0); g.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.30), M.frame()); foot.position.set(sx * w / 2, 0.01, 0); g.add(foot);
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, w, 14), mat); bar.rotation.z = Math.PI / 2; bar.position.y = h; g.add(bar);
+  return shadowAll(g);
+}

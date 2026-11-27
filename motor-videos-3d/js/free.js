@@ -333,9 +333,9 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   if (B && B.ankleWeight) fp.ankleW = add(PR.ankleWeight());
   if (B && (B.type === 'legPressCalf' || B.type === 'legPress')) fp.sled = add(PR.legPressSled());
   if (B && B.slide) fp.sliders = [add(PR.slider()), add(PR.slider())];
-  if (B && (B.carry || B.beltKb || B.handKb) && B.carry !== 'both') fp.kb = add(PR.kettlebell());
+  if (B && (B.carry || B.beltKb || B.handKb || B.carryOH || (B.carryFront && B.carryFront !== 'bag')) && B.carry !== 'both') fp.kb = add(PR.kettlebell());
   if (B && B.carry === 'both') fp.dbs = [add(PR.dumbbell(1.3)), add(PR.dumbbell(1.3))];
-  if (B && (B.trx || B.hipBand || B.kneeBand || B.bands || B.cable || B.band || B.anchor || B.kneeBandLoop || B.ankleBand || B.bandAnkle || B.bandAnkles)) fp.fband = Array.from({ length: 12 }, () => add(PR.bandSegment(B.trx ? 0x16181a : (B.cable && !B.cableBand ? 0xb9bec4 : undefined), B.trx ? 0.012 : (B.cable && !B.cableBand ? 0.0065 : undefined))));
+  if (B && (B.trx || B.hipBand || B.kneeBand || B.bands || B.cable || B.band || B.anchor || B.kneeBandLoop || B.ankleBand || B.bandAnkle || B.bandAnkles || B.beltBand)) fp.fband = Array.from({ length: 12 }, () => add(PR.bandSegment(B.trx ? 0x16181a : (B.cable && !B.cableBand ? 0xb9bec4 : undefined), B.trx ? 0.012 : (B.cable && !B.cableBand ? 0.0065 : undefined))));
   for (const k in (B && B.machine ? { m: 1 } : {})) fp.machine = add(PR[B.machine.kind](B.machine));
   return fp;
 }
@@ -765,7 +765,7 @@ function gait(sk, cfg, s, cache) {
   const swingA = Math.sin(2 * Math.PI * t / T) * amp;
   for (const sd of ['L', 'R']) {
     const sx = sxOf(sd), S = sk.shoulder(P, sd);
-    if (B.carry && (sd === B.carry || B.carry === 'both')) continue;
+    if ((B.carry && (sd === B.carry || B.carry === 'both')) || sd === B.carryOH || B.carryFront) continue;
     let W2;
     if (B.tandem) W2 = S.clone().add(side.clone().multiplyScalar(sx * 0.52)).add(V3(0, -0.06, 0));
     else if (B.armsHips) { W2 = null; }
@@ -790,6 +790,22 @@ function gait(sk, cfg, s, cache) {
     const G = S.clone().add(V3(0, -0.60, 0)).add(side.clone().multiplyScalar(sx * 0.10));
     gripTo(sk, P, sd, G, fwd.clone(), side.clone().multiplyScalar(-sx), side.clone().multiplyScalar(sx));
     load.kb = { p: G.clone().sub(V3(0, 0.066, 0)), q: qY(yaw) }; load.mass = 16;
+  }
+  if (B.carryFront) {
+    const C = sk.chestPoint(P, V3(0, 1.27, 0.27));
+    for (const sd of ['L', 'R']) {
+      const sx = sxOf(sd);
+      armTo(sk, P, sd, C.clone().add(side.clone().multiplyScalar(sx * 0.055)), side.clone().multiplyScalar(sx * 0.5).add(V3(0, -1, 0)), side.clone().multiplyScalar(-sx), V3(0, 1, 0));
+    }
+    if (B.carryFront === 'bag') load.dyn.rods = [[C.clone().add(V3(0, -0.06, 0.04)).add(side.clone().multiplyScalar(0.27)), C.clone().add(V3(0, -0.06, 0.04)).add(side.clone().multiplyScalar(-0.27))]];
+    else load.kb = { p: C.clone().add(V3(0, -0.085, 0)), q: qY(yaw) };
+    load.mass = 16;
+  }
+  if (B.carryOH) {
+    const sd = B.carryOH, sx = sxOf(sd), S = sk.shoulder(P, sd);
+    const G = S.clone().add(V3(0, 0.63, 0)).add(side.clone().multiplyScalar(sx * 0.04));
+    gripTo(sk, P, sd, G, fwd.clone(), side.clone().multiplyScalar(-sx), side.clone().multiplyScalar(sx).add(V3(0, -0.3, 0)));
+    load.kb = { p: G.clone().add(V3(0, -0.05, 0)).add(fwd.clone().multiplyScalar(-0.09)), q: qY(yaw).multiply(qX(Math.PI * 0.55)) }; load.mass = 12;
   }
   if (B.kneeBandLoop) load.fband.push(...kneeBand(P));
   if (B.ankleBand) {
@@ -993,7 +1009,7 @@ function kfInterp(keys, u) {
     if (u <= b.u) {
       const f = (b.ease === 'lin') ? (u - a.u) / (b.u - a.u) : smooth((u - a.u) / (b.u - a.u));
       const o = { u };
-      for (const key of ['k', 'pz', 'px', 'lean', 'arm', 'armOut']) o[key] = lerp(a[key] ?? 0, b[key] ?? 0, f);
+      for (const key of ['k', 'pz', 'px', 'lean', 'arm', 'armOut', 'yaw']) o[key] = lerp(a[key] ?? 0, b[key] ?? 0, f);
       if (a.P && b.P) o.P = a.P.map((v, j) => lerp(v, b.P[j], f) + (j === 1 && b.arcP ? b.arcP * 4 * ((u - a.u) / (b.u - a.u)) * (1 - (u - a.u) / (b.u - a.u)) : 0));
       for (const sd of ['L', 'R']) o[sd] = (a[sd] || [0, 0, 0, 0]).map((v, j) => {
         const w = (b[sd] || [0, 0, 0, 0])[j];
@@ -1021,10 +1037,16 @@ function jumpKF(sk, cfg, s) {
     fq[sd] = qX(deg(f[3] || 0)).multiply(qY(sx * toe));
   }
   const lean = deg(K.lean ?? 3);
-  const r = uprightR(lean, { neckK: 0.5 });
+  const yawD = K.yaw ?? 0, qy = qY(deg(yawD));
+  const r = uprightR(lean, { neckK: 0.5, yaw: yawD });
   const q = r.pelvis;
   const free = K.free !== undefined ? K.free : (B.free ?? null);   // pierna que no apoya (saltos a una pierna)
   const sup = free ? [other(free)] : ['L', 'R'];
+  if (yawD) {
+    // giro sobre el eje vertical: los pies giran alrededor del centro de apoyo
+    const cx = sup.reduce((a, sd) => a + A[sd].x, 0) / sup.length, cz = sup.reduce((a, sd) => a + A[sd].z, 0) / sup.length;
+    for (const sd of ['L', 'R']) { const d = rot(qy, V3(A[sd].x - cx, 0, A[sd].z - cz)); A[sd].x = cx + d.x; A[sd].z = cz + d.z; fq[sd] = qy.clone().multiply(fq[sd]); }
+  }
   const px = sup.reduce((a, sd) => a + A[sd].x, 0) / sup.length + (K.px ?? 0);
   const pz = sup.reduce((a, sd) => a + A[sd].z, 0) / sup.length + (K.pz ?? 0);
   let y = Infinity;
@@ -1048,13 +1070,19 @@ function jumpKF(sk, cfg, s) {
   }
   // brazos: oscilan en el plano sagital
   const a = deg(K.arm ?? 0), ao = K.armOut ?? 0;
-  for (const sd of ['L', 'R']) {
+  const load = { mass: 0, fband: [], dyn: {} };
+  if (B.armsHips) Object.assign(load, squatArms(sk, { ...cfg, arms: 'hips' }, P, s), { fband: [], dyn: {} });
+  else for (const sd of ['L', 'R']) {
     const sx = sxOf(sd), S = sk.shoulder(P, sd);
-    const dir = V3(sx * (0.10 + ao), -Math.cos(a), Math.sin(a)).normalize();
+    const dir = rot(qy, V3(sx * (0.10 + ao), -Math.cos(a), Math.sin(a)).normalize());
     const Wr = S.clone().add(dir.clone().multiplyScalar(0.53));
-    armTo(sk, P, sd, Wr, V3(sx * 0.3, -0.3, -1).add(V3(0, Math.sin(a) * 0.8, 0)), V3(-sx, 0, 0), dir);
+    armTo(sk, P, sd, Wr, rot(qy, V3(sx * 0.3, -0.3, -1).add(V3(0, Math.sin(a) * 0.8, 0))), rot(qy, V3(-sx, 0, 0)), dir);
   }
-  return { P, load: { mass: 0, fband: [], dyn: {} }, pelvisPos, lean };
+  if (B.beltBand) for (const sd of ['L', 'R']) {
+    const sx = sxOf(sd), b = P.pelvis.p.clone().add(rot(P.pelvis.q, V3(sx * 0.12, -0.03, 0.04)));
+    load.fband.push([V3(sx * 0.30 + (B.beltBandX ?? 0), 0.02, b.z), b]);
+  }
+  return { P, load, pelvisPos, lean };
 }
 
 // ------------------------------------------------------------------ pose general por fotogramas clave
