@@ -25,6 +25,15 @@ import './js/ex_lote57.js';
 import './js/ex_lote58.js';
 import './js/ex_lote59.js';
 import './js/ex_lote60.js';
+import './js/ex_lote61.js';
+import './js/ex_lote62.js';
+import './js/ex_lote63.js';
+import './js/ex_lote64.js';
+import './js/ex_lote65.js';
+import './js/ex_lote66.js';
+import './js/ex_lote67.js';
+import './js/ex_lote68.js';
+import './js/ex_lote69.js';
 const out = {};
 for (const c of process.argv.slice(2)) { const d = EXERCISES[c]; out[c] = { prim: d.primary.join(' · '), sec: d.secondary.join(' · ') }; }
 console.log(JSON.stringify(out));

@@ -61,6 +61,15 @@ import './ex_lote57.js';
 import './ex_lote58.js';
 import './ex_lote59.js';
 import './ex_lote60.js';
+import './ex_lote61.js';
+import './ex_lote62.js';
+import './ex_lote63.js';
+import './ex_lote64.js';
+import './ex_lote65.js';
+import './ex_lote66.js';
+import './ex_lote67.js';
+import './ex_lote68.js';
+import './ex_lote69.js';
 import { EXERCISES, GROUPS, buildTimeline, stateAt, cameraAt, viewLabelAt, labelsAt } from './exercises.js';
 import { HACK_SLED } from './props.js';
 import { makeBackground, drawOverlay } from './overlay.js';
@@ -72,6 +81,7 @@ const body = await loadBody('/body.json');
 const rig = new Rig(body, env.scene);
 const sk = new Skel(rig.J, rig.mtp);
 const camera = new THREE.PerspectiveCamera(27, W / H, 0.1, 40);
+const REGION = { TI: 'Tren Inferior', TS: 'Tren Superior', CO: 'Core', PL: 'Pliometría', VE: 'Velocidad', AG: 'Agilidad', MO: 'Movilidad', PR: 'Prevención y Rehabilitación' };
 const bg = makeBackground();
 const out = document.createElement('canvas'); out.width = W; out.height = H;
 const g2 = out.getContext('2d');
@@ -202,7 +212,7 @@ function render(t, opts = {}) {
   if (!opts.noOverlay) {
     const labels = labelsAt(def, rig, camera, st.labelsAlpha, W, H);
     drawOverlay(g2, {
-      code: cur.code, name: def.name, subtitle: `${def.region || 'Tren Inferior'} · ${def.sub || 'Sentadillas'} · ${def.level}`,
+      code: cur.code, name: def.name, subtitle: `${def.region || REGION[cur.code.slice(0, 2)] || 'Tren Inferior'} · ${def.sub || 'Sentadillas'} · ${def.level}`,
       primaryNames: def.primary.join(' · '), secondaryNames: def.secondary.join(' · '),
       caption: st.caption, viewLabel: viewLabelAt(tl, t, cam),
       tempo: st.step.kind === 'outro' ? null : {

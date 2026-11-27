@@ -616,3 +616,29 @@ export function chute(o = {}) {
   }
   return g;
 }
+
+// chaleco lastrado: paneles delante y detrás del pecho (coordenadas relativas al punto de pecho en reposo)
+export function vest(o = {}) {
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color: o.color ?? 0x24272b, roughness: 0.75 });
+  const f = o.front ?? 0.112, b = o.back ?? 0.108;
+  const front = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.27, 0.05), m); front.position.set(0, -0.03, f); g.add(front);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.30, 0.05), m); back.position.set(0, -0.02, -b); g.add(back);
+  for (const s of [1, -1]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, f + b + 0.05), m); st.position.set(s * 0.09, 0.115, (f - b) / 2); g.add(st); }
+  return shadowAll(g);
+}
+
+// escalera de agilidad plana en el suelo (cintas laterales + peldaños); se desplaza en Z para simular avance
+export function agilityLadder(o = {}) {
+  const g = new THREE.Group(), w = o.w ?? 0.46, d = o.d ?? 0.46, z0 = o.z0 ?? -6, z1 = o.z1 ?? 9;
+  const yel = new THREE.MeshStandardMaterial({ color: o.color ?? 0xe8c022, roughness: 0.6 });
+  const blk = new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.7 });
+  if (o.rails !== false) for (const s of [1, -1]) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, z1 - z0), blk); r.position.set(s * w / 2, 0.004, (z0 + z1) / 2); g.add(r); }
+  for (let z = Math.ceil(z0 / d) * d; z <= z1; z += d) {
+    if (o.hurdleH) { const hh = hurdle({ h: o.hurdleH, w: w }); hh.position.z = z; g.add(hh); continue; }
+    if (o.pads) { const pd = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 0.03, d * 0.55), new THREE.MeshStandardMaterial({ color: 0x3f6fb0, roughness: 0.8 })); pd.position.set(0, 0.015, z); pd.receiveShadow = true; g.add(pd); continue; }
+    const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.012, 0.035), yel); r.position.set(0, 0.006, z); g.add(r);
+  }
+  g.traverse((m) => { if (m.isMesh) m.receiveShadow = true; });
+  return g;
+}

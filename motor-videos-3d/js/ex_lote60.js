@@ -11,7 +11,7 @@ const rampFrame = (h) => ({ frame: { ...RUN_FR.frame, ty: RUN_FR.frame.ty + h, t
 export function brakeProfile({ acc = 2.4, vmax = 6.4, hold = 0.5, dec = 1.0, rest = 1.8, drop = 0.21, lean0 = 38, back = -14, wide = 0.17 } = {}) {
   const t1 = 0.5, t2 = t1 + acc, t3 = t2 + hold, t4 = t3 + dec, t5 = t4 + rest;
   return {
-    loop: t5,
+    loop: t5, _stop: t4,
     speeds: [[0, 0], [t1, 0], [t1 + 0.4, vmax * 0.3], [t2, vmax], [t3, vmax], [t4, 0], [t5, 0]],
     leans: [[0, 4], [t1 - 0.2, 4], [t1 + 0.1, lean0], [t1 + 0.9, lean0 * 0.6], [t2, 10], [t3, 8], [t3 + dec * 0.45, back], [t4, back * 0.3], [t4 + 0.35, 16], [t5 - 0.5, 16], [t5, 4]],
     dys: [[0, 0], [t3, 0], [t3 + dec * 0.6, -drop * 0.8], [t4, -drop], [t5 - 0.5, -drop], [t5, 0]],

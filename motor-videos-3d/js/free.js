@@ -315,6 +315,7 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
     add(o);
   }
   if (B && B.ball) fp.ball = add(PR.swissBall(B.ball.r));
+  if (B && B.ball2) fp.ball2 = add(PR.swissBall(B.ball2.r));
   if (B && B.armMode === 'ball') fp.ball = add(PR.swissBall(0.11));
   if (B && B.board) fp.board = add(PR.balanceBoard());
   if (B && B.hold === 'bar') { fp.bar = add(PR.barbell(B.barOpts || {})); const fade = new Set(); fp.bar.traverse(o => { if (o.isMesh && Math.abs(o.position.x) > 0.6) fade.add(o.material); }); fp.fadeMats = [...fade]; }
@@ -328,6 +329,9 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   if (B && B.wheel) fp.wheel = add(PR.plate(B.wheel.r ?? 0.10));
   if (B && B.sliderAt) fp.sliders = B.sliderAt.map(() => add(PR.slider()));
   if (B && B.type === 'run' && B.slope) add(PR.ramp({ slope: B.slope, h0: B.rampH ?? 0.5 }));
+  if (B && B.type === 'run' && B.marks) fp.marks = B.marks.map((m) => add(PR[m.kind](m)));
+  if (B && B.vest) fp.vest = add(PR.vest());
+  if (B && B.type === 'run' && B.ladder) fp.ladder = add(PR.agilityLadder(B.ladder));
   if (B && B.cones) fp.cones = Array.from({ length: (B.cones.n ?? 6) * (B.cones.both === false ? 1 : 2) }, () => add(PR.cone()));
   if (B && B.hold === 'db1') fp.dbs = [add(PR.dumbbell(B.dbK ?? 1.2))];
   if (B && B.arms === 'bar') { fp.bar = add(PR.barbell()); const fade = new Set(); fp.bar.traverse(o => { if (o.isMesh && Math.abs(o.position.x) > 0.6) fade.add(o.material); }); fp.fadeMats = [...fade]; }
@@ -342,6 +346,7 @@ export function setupFree(scene, cfg, PR, cache = {}, p0 = null) {
   return fp;
 }
 export function applyFree(fp, load) {
+  if (fp.ball2 && load.dyn && load.dyn.ball2) fp.ball2.position.copy(load.dyn.ball2.p);
   if (fp.ball && load.dyn && load.dyn.ball) { fp.ball.position.copy(load.dyn.ball.p); fp.ball.quaternion.copy(load.dyn.ball.q); }
   if (fp.board && load.dyn && load.dyn.board) { fp.board.position.copy(load.dyn.board.p); fp.board.quaternion.copy(load.dyn.board.q); }
   if (fp.sliders && load.dyn && load.dyn.sliders) load.dyn.sliders.forEach((p, i) => fp.sliders[i].position.copy(p));
@@ -364,6 +369,9 @@ export function applyFree(fp, load) {
   });
   if (fp.handles && load.dyn && load.dyn.handles) fp.handles.forEach((m, i) => { const h = load.dyn.handles[i]; if (h) { m.position.copy(h.p); m.quaternion.copy(h.q); } });
   if (fp.sidePlates && load.dyn && load.dyn.sidePlates) fp.sidePlates.forEach((m, i) => m.position.copy(load.dyn.sidePlates[i]));
+  if (fp.marks && load.dyn && load.dyn.marks) fp.marks.forEach((m, i) => { const c = load.dyn.marks[i]; if (c) m.position.copy(c); });
+  if (fp.ladder && load.dyn && load.dyn.ladderZ !== undefined) fp.ladder.position.z = load.dyn.ladderZ;
+  if (fp.vest && load.dyn && load.dyn.vest) { fp.vest.position.copy(load.dyn.vest.p); fp.vest.quaternion.copy(load.dyn.vest.q); }
   if (fp.cones && load.dyn && load.dyn.cones) fp.cones.forEach((m, i) => { const c = load.dyn.cones[i]; if (c) m.position.copy(c); });
   if (fp.wheel && load.dyn && load.dyn.wheel) { fp.wheel.position.copy(load.dyn.wheel); fp.wheel.rotation.set(load.dyn.wheel.z / 0.10, 0, 0); }
   if (fp.hangPlate && load.dyn && load.dyn.hangPlate) { fp.hangPlate.position.copy(load.dyn.hangPlate); fp.hangPlate.rotation.set(0, Math.PI / 2, 0); }
@@ -1242,6 +1250,7 @@ function kfPose(sk, cfg, s) {
   if (B.wheel && B.wheelAt) load.dyn.wheel = ptOf(B.wheelAt);
   if (B.sliderAt) load.dyn.sliders = B.sliderAt.map((v) => ptOf(v).setY(0));
   if (B.ball && B.ballAt) load.dyn.ball = { p: ptOf(B.ballAt), q: new THREE.Quaternion() };
+  if (B.ball2 && B.ball2At) load.dyn.ball2 = { p: ptOf(B.ball2At), q: new THREE.Quaternion() };
   if (B.bands) for (const bd of B.bands) load.fband.push([ptOf(bd.anchor), bd.to ? ptOf(bd.to) : (grips[bd.hand] || P['wrist_' + bd.hand]).clone()]);
   if (B.kneeBand) load.fband.push(...kneeBand(P));
   if (B.bandAnkle) load.fband.push([V3(...B.bandAnkle.anchor), P['ankle_' + B.bandAnkle.side].clone().add(V3(0, 0.02, 0.02))]);
@@ -1264,7 +1273,11 @@ function run(sk, cfg, s, cache) {
   const t = cfg._t ?? 0, loop = B.loop ?? 0;
   const vmax = B.speed ?? 6;
   const vAt = (tt) => (B.speeds ? profAt(B.speeds, tt, loop) : vmax * smooth(clamp((tt - 0.4) / 1.2, 0, 1)));
-  const cadAt = (tt) => { const v = vAt(tt); return B.cadence ?? ((B.cad0 ?? 2.2) + (B.cadK ?? 0.22) * v); };
+  // perfiles escalonados: carrera de espaldas (backs) y desplazamiento lateral (shuffles: 1 = hacia la izquierda, −1 = derecha)
+  const stepAt = (pr, tt) => { const x = loop ? ((tt % loop) + loop) % loop : tt; let r = pr[0][1]; for (const [k, val] of pr) if (k <= x) r = val; return r; };
+  const dirAt = (tt) => (B.backs ? stepAt(B.backs, tt) : (B.backward ? -1 : 1));
+  const shufAt = (tt) => (B.shuffles ? stepAt(B.shuffles, tt) : (B.shuffle ?? 0));
+  const cadAt = (tt) => { const v = vAt(tt); if (shufAt(tt)) return B.shufCad ?? (3.6 + 0.3 * v); return B.cadence ?? ((B.cad0 ?? 2.2) + (B.cadK ?? 0.22) * v); };
   // fase acumulada del ciclo de pierna (integración numérica, con caché por instancia)
   const dt = 1 / 120;
   if (!cache.run || cache.run.t > t) cache.run = { t: 0, ph: 0 };
@@ -1273,16 +1286,29 @@ function run(sk, cfg, s, cache) {
   const v = vAt(t), cad = cadAt(t), T = 2 / cad;
   const still = v < 0.05 && B.inPlace === undefined;
   const beta = B.stance ?? clamp(0.62 - 0.045 * v, 0.24, 0.6);
-  const a = (B.inPlace ? 0 : v * beta * T / 2) * (B.backward ? -1 : 1);
-  const dir = B.backward ? -1 : 1;
+  const dir = dirAt(t), shuf = shufAt(t);
+  const a = (B.inPlace || shuf ? 0 : v * beta * T / 2) * dir;
   const knee = B.knee ?? clamp(0.45 + 0.08 * v, 0.4, 1.0), heel = B.heel ?? clamp(0.30 + 0.07 * v, 0.25, 0.95);
   const W = B.width ?? 0.09;
   const act = still ? 0 : (B.inPlace ? 1 : clamp(v / 1.5, 0, 1));
   const foot = {};
   let stanceW = null;
   for (const sd of ['L', 'R']) {
-    const f = ((ph + (sd === 'L' ? 0 : 0.5)) % 1 + 1) % 1;
+    const f = B.oneLeg && sd !== B.oneLeg ? 0 : ((ph + (sd === 'L' ? 0 : 0.5)) % 1 + 1) % 1;
     let z, y = 0, pitch = 0, sw = false;
+    if (shuf) {
+      // paso lateral (sin cruzar): la pierna avanza en el aire la mitad del ciclo y retrocede apoyada la otra mitad
+      const sL = v * T, lift = (B.shufLift ?? 0.06) * act;
+      let x;
+      let zc = 0;
+      if (f < 0.5) {
+        const u = f / 0.5; x = lerp(-sL / 4, sL / 4, smooth(u)); y = lift * Math.sin(Math.PI * u); sw = true;
+        // carioca: el pie que se mueve cruza por delante y por detrás de forma alterna
+        if (B.carioca) { const cyc = Math.floor(ph + (sd === 'L' ? 0 : 0.5)); zc = (cyc % 2 ? 1 : -1) * 0.13 * Math.sin(Math.PI * u); }
+      } else { const w = (f - 0.5) / 0.5; x = lerp(sL / 4, -sL / 4, w); stanceW = stanceW ?? w; }
+      foot[sd] = { z: zc, y, pitch: 0, sw, x: x * shuf };
+      continue;
+    }
     if (f < beta) { const w = f / beta; z = a - 2 * a * w; pitch = B.inPlace ? 0 : 14 * smooth(clamp((w - 0.6) / 0.4, 0, 1)); stanceW = stanceW ?? w; }
     else {
       sw = true;
@@ -1305,6 +1331,8 @@ function run(sk, cfg, s, cache) {
   const Wn = B.widths ? profAt(B.widths, t, loop) : W;
   const sl = Math.tan(deg(B.slope ?? 0)), h0 = B.slope ? (B.rampH ?? 0.5) : 0;
   const r = uprightR(lean * dir, { neckK: 0.6, twist: -twist, yaw: yawD });
+  const bank = B.banks ? profAt(B.banks, t, loop) : (B.bank ?? 0);
+  if (bank) r.pelvis = qY(deg(yawD)).multiply(qZ(deg(bank))).multiply(qX(lean * dir));
   const q = r.pelvis;
   // altura de pelvis: bajada en el apoyo y vuelo
   const y0 = maxPelvisY(sk, q, 0, 0, 'L', rot(qy, V3(Wn, AH, 0)), B.k ?? clamp(0.975 - 0.006 * v, 0.93, 0.975));
@@ -1314,15 +1342,17 @@ function run(sk, cfg, s, cache) {
   for (const sd of ['L', 'R']) {
     const F = foot[sd], sx = sxOf(sd);
     const fq = qy.clone().multiply(qY(sx * deg(B.toeOut ?? 4))).multiply(qX(deg(F.pitch)));
-    const off = rot(qy, V3(sx * Wn, 0, F.z + (B.footZ ?? 0.04) * dir));
+    const off = rot(qy, V3(sx * Wn + (F.x ?? 0), 0, F.z + (B.footZ ?? 0.04) * dir));
     const A = V3(off.x, AH + F.y + h0, pelvisPos.z + off.z);
     A.y += A.z * sl;
+    if (B.lifts && sd === 'L') { const h = profAt(B.lifts, t, loop); A.y += h; A.add(rot(qy, V3(0, 0, h * 0.35))); }
     sk.leg(P, sd, A, fq, rot(qy, V3(sx * 0.06, 0.1, dir)), 0);
   }
   // brazos: codo a 90°, braceo contrario a las piernas
-  const armA = deg(B.arm ?? clamp(25 + 6 * v, 25, 70)) * act;
+  const armA = deg(B.arm ?? clamp(25 + 6 * v, 25, 70)) * act * (shuf ? 0.3 : 1);
   for (const sd of ['L', 'R']) {
     const sx = sxOf(sd), S = sk.shoulder(P, sd);
+    if (B.handsAt && (!B.handSides || B.handSides.includes(sd))) { const h = B.handsAt; const hp = B.handPalm || [0, 0, 1]; armTo(sk, P, sd, V3(sx * h[0], h[1], h[2]), V3(sx * 0.6, -1, -0.2).normalize(), V3(sx * hp[0], hp[1], hp[2]).normalize(), V3(0, 1, 0)); continue; }
     const th = armA * Math.cos(2 * Math.PI * (ph + (sd === 'L' ? 0.5 : 0)) - 0.6) * dir;
     const cq = P.chest.q;
     const d1 = rot(cq, V3(sx * 0.12, -Math.cos(th), Math.sin(th)).normalize());
@@ -1340,13 +1370,41 @@ function run(sk, cfg, s, cache) {
   // conos que pasan a los lados para dar sensación de avance
   if (B.cones) {
     const n = B.cones.n ?? 6, d = B.cones.d ?? 5, xx = B.cones.x ?? 1.4;
-    const dist = (cache.run.dist ??= { t: 0, z: 0 });
-    if (dist.t > t) { dist.t = 0; dist.z = 0; }
-    while (dist.t + dt <= t) { dist.z += vAt(dist.t + dt / 2) * dt * dir; dist.t += dt; }
-    const off = dist.z + vAt(t) * (t - dist.t) * dir;
+    const dist = (cache.run.dist ??= { t: 0, z: 0, x: 0 });
+    if (dist.t > t) { dist.t = 0; dist.z = 0; dist.x = 0; }
+    const yw = (tt) => (B.yaws ? deg(profAt(B.yaws, tt, loop)) : 0);
+    const mv = (tt) => yw(tt) + (shufAt(tt) ? deg(90) * shufAt(tt) : 0);
+    const fz = (tt) => vAt(tt) * dirAt(tt) * Math.cos(mv(tt)), fx = (tt) => vAt(tt) * dirAt(tt) * Math.sin(mv(tt));
+    while (dist.t + dt <= t) { const tm = dist.t + dt / 2; dist.z += fz(tm) * dt; dist.x += fx(tm) * dt; dist.t += dt; }
+    const off = dist.z + fz(t) * (t - dist.t), offX = dist.x + fx(t) * (t - dist.t), W2 = 4 * Math.abs(xx);
     load.dyn.cones = [];
-    for (let i = 0; i < n; i++) { const z = ((i * d - off) % (n * d) + n * d) % (n * d) - d; for (const sxx of (B.cones.both === false ? [1] : [1, -1])) load.dyn.cones.push(V3(sxx * xx, Math.max(0, h0 + z * sl), z)); }
+    for (let i = 0; i < n; i++) {
+      const z = ((i * d - off) % (n * d) + n * d) % (n * d) - d;
+      for (const sxx of (B.cones.both === false ? [1] : [1, -1])) {
+        const x = (B.yaws || B.shuffles || B.shuffle) ? ((((sxx * xx - offX + W2 / 2) % W2) + W2) % W2) - W2 / 2 : sxx * xx;
+        load.dyn.cones.push(V3(x, Math.max(0, h0 + z * sl), z));
+      }
+    }
   }
+  // escalera de agilidad que pasa por debajo con el avance
+  if (B.ladder) {
+    const fwd = (tt) => vAt(tt) * dirAt(tt) * Math.cos(deg((B.yaws ? profAt(B.yaws, tt, loop) : (B.yaw ?? 0)) + 90 * shufAt(tt)));
+    const lad = (cache.run.lad ??= { t: 0, z: 0 });
+    if (lad.t > t) { lad.t = 0; lad.z = 0; }
+    while (lad.t + dt <= t) { lad.z += fwd(lad.t + dt / 2) * dt; lad.t += dt; }
+    const off = lad.z + fwd(t) * (t - lad.t), d = B.ladder.d ?? 0.46;
+    load.dyn.ladderZ = -(((off % d) + d) % d) + (B.ladder.z ?? 0);
+  }
+  // marcas que llegan con el avance y quedan delante al frenar (obstáculo, cono de parada)
+  if (B.marks) {
+    const fwd = (tt) => vAt(tt) * dirAt(tt) * Math.cos(deg((B.yaws ? profAt(B.yaws, tt, loop) : (B.yaw ?? 0)) + 90 * shufAt(tt)));
+    const distTo = (t1) => { let z = 0; for (let tt = 0; tt < t1; tt += dt) z += fwd(tt + dt / 2) * dt; return z; };
+    cache.runMarks ??= { Dl: distTo(loop || 10), Ds: B.marks.map((m) => distTo(m.at)) };
+    const tl = loop ? ((t % loop) + loop) % loop : t, Dnow = distTo(tl);
+    load.dyn.marks = B.marks.map((m, i) => { const z = (m.z ?? 0.9) + cache.runMarks.Ds[i] - Dnow; return V3(m.x ?? 0, Math.max(0, h0 + z * sl), z); });
+  }
+  if (B.vest) load.dyn.vest = { p: sk.chestPoint(P, V3(0, 1.31, 0)), q: P.chest.q.clone() };
+  if (B.dribble) { const r = (B.ball && B.ball.r) || 0.11, zb = 0.45 + 0.10 * Math.sin(2 * Math.PI * ph) * act; load.dyn.ball = { p: rot(qy, V3(0.03, r, zb)).add(V3(0, h0, 0)), q: qy.clone().multiply(qX(ph * 6)) }; }
   return { P, load, pelvisPos, lean };
 }
 
