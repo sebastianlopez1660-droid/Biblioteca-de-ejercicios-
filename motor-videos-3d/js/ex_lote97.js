@@ -1,0 +1,32 @@
+// Lote 97: PR-LUM-002 … PR-LUM-011 (generado por gen.py a partir de ejercicios ya definidos)
+import { EXERCISES } from './exercises.js';
+import './ex_lote8.js';
+import './ex_lote14.js';
+import './ex_lote21.js';
+import './ex_lote38.js';
+import './ex_lote42.js';
+import './ex_lote44.js';
+import './ex_lote76.js';
+
+Object.assign(EXERCISES, {
+  "PR-LUM-002": { ...EXERCISES["CO-ARO-005"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Erectores espinales", "Transverso abdominal", "Glúteos"], secondary: ["Oblicuos"], name: "Bird dog terapéutico (progresión temprana)", level: "Principiante",
+    captions: { intro: "En cuadrupedia, columna neutra", reps: [["Estira un brazo o una pierna sin mover la espalda", "Después brazo y pierna contraria"], ["Pelvis nivelada", "Movimiento lento"], ["8–10 por lado", "Progresión temprana"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-003": { ...EXERCISES["TI-PUE-001"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Glúteos"], secondary: ["Isquiotibiales", "Transverso abdominal"], name: "Puente de glúteo terapéutico (protocolo temprano)", level: "Principiante",
+    captions: { intro: "Boca arriba, rodillas dobladas", reps: [["Eleva la cadera apretando los glúteos", "Baja vértebra a vértebra"], ["Sin arquear la zona lumbar arriba", "Abdomen activo"], ["10–12 repeticiones", "Rango cómodo"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-004": { ...EXERCISES["TI-ACT-008"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Transverso abdominal", "Flexores de cadera"], secondary: ["Recto abdominal"], name: "Flexión de cadera controlada en decúbito supino (marcha terapéutica)", level: "Principiante",
+    captions: { intro: "Boca arriba, rodillas dobladas", reps: [["Eleva una rodilla a 90° sin mover la pelvis", "Bájala y alterna (marcha en el suelo)"], ["Zona lumbar estable", "Respiración tranquila"], ["8–10 por lado", "Progresión: estirar la pierna"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-005": { ...EXERCISES["MO-COL-010"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Erectores espinales"], secondary: ["Recto abdominal"], name: "Ejercicio de extensión en prono con apoyo en antebrazos (protocolo de extensión)", level: "Principiante",
+    captions: { intro: "Boca abajo, apoyado sobre los antebrazos", reps: [["Mantén la extensión sobre los antebrazos 20–30 s", "Relaja los glúteos"], ["Pelvis en el suelo", "Sin dolor que baje a la pierna"], ["3–5 repeticiones", "Útil si la extensión alivia"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-006": { ...EXERCISES["MO-COL-002"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Erectores espinales", "Recto abdominal"], secondary: ["Core"], name: "Movilidad controlada de flexión lumbar (gato-camello terapéutico)", level: "Intermedio",
+    captions: { intro: "En cuadrupedia", reps: [["Alterna flexión y extensión de la espalda en un rango cómodo", "Movimiento lento"], ["Sin dolor", "Coordina con la respiración"], ["10 repeticiones", "Movilidad terapéutica"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-007": { ...EXERCISES["TS-ESC-011"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Transverso abdominal", "Erectores espinales"], secondary: ["Oblicuos", "Deltoides"], name: "Estabilización de tronco en cuadrupedia (progresión de bird dog)", level: "Intermedio",
+    captions: { intro: "En cuadrupedia, columna neutra", reps: [["Eleva un brazo hacia delante sin mover el tronco", "Progresión: pierna y después brazo y pierna"], ["Pelvis nivelada", "Abdomen activo"], ["8–10 por lado", "Sin dolor"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-008": { ...EXERCISES["TI-BIS-001"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Glúteos", "Isquiotibiales"], secondary: ["Erectores espinales", "Core"], name: "Progresión de carga en bisagra de cadera (hip hinge terapéutico)", level: "Intermedio",
+    captions: { intro: "De pie con una banda o bastón", reps: [["Practica la bisagra de cadera con la espalda neutra", "Lleva la cadera atrás"], ["El bastón toca cabeza, espalda y sacro", "Rodillas algo flexionadas"], ["10–12 repeticiones", "Base para levantar peso con seguridad"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-009": { ...EXERCISES["TI-EQU-005"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Transverso abdominal", "Glúteo medio"], secondary: ["Erectores espinales", "Estabilizadores de tobillo"], name: "Marcha terapéutica con activación de core", level: "Intermedio",
+    captions: { intro: "Caminando en línea recta", reps: [["Camina activando suavemente el abdomen", "Postura alta y pasos controlados"], ["Brazos relajados", "Respira con normalidad"], ["5–10 min", "Aumenta el tiempo progresivamente"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-010": { ...EXERCISES["TI-SEN-007"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Cuádriceps", "Glúteos"], secondary: ["Core", "Erectores espinales"], name: "Progresión de sentadilla terapéutica de bajo impacto", level: "Intermedio",
+    captions: { intro: "De pie frente a un cajón", reps: [["Siéntate en el cajón con la espalda neutra y levántate", "Altura del cajón según tolerancia"], ["Peso en los talones", "Pecho alto"], ["10–12 repeticiones", "Baja el cajón al progresar"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-011": { ...EXERCISES["CO-AFL-010"], labelAll: true, sub: "Rehabilitación lumbar", primary: ["Core", "Dorsal ancho"], secondary: ["Erectores espinales"], name: "Descompresión lumbar en suspensión parcial asistida", level: "Avanzado",
+    captions: { intro: "Colgado parcialmente de las cintas con los pies en el suelo", reps: [["Deja que el peso del cuerpo descomprima suavemente la espalda", "Mantén 20–30 s"], ["Respira y relaja la zona lumbar", "Pies apoyados para regular la carga"], ["3–5 repeticiones", "Sin dolor"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+});

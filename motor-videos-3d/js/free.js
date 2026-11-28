@@ -1381,7 +1381,7 @@ function run(sk, cfg, s, cache) {
     for (let i = 0; i < n; i++) {
       const z = ((i * d - off) % (n * d) + n * d) % (n * d) - d;
       for (const sxx of (B.cones.both === false ? [1] : [1, -1])) {
-        const x = (B.yaws || B.shuffles || B.shuffle) ? ((((sxx * xx - offX + W2 / 2) % W2) + W2) % W2) - W2 / 2 : sxx * xx;
+        const x = B.cones.line !== undefined ? B.cones.line - offX : (B.yaws || B.shuffles || B.shuffle) ? ((((sxx * xx - offX + W2 / 2) % W2) + W2) % W2) - W2 / 2 : sxx * xx;
         load.dyn.cones.push(V3(x, Math.max(0, h0 + z * sl), z));
       }
     }

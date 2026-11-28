@@ -1,0 +1,33 @@
+// Lote 96: PR-FAS-008 … PR-LUM-001 (generado por gen.py a partir de ejercicios ya definidos)
+import { EXERCISES } from './exercises.js';
+import './ex_lote11.js';
+import './ex_lote12.js';
+import './ex_lote14.js';
+import './ex_lote15.js';
+import './ex_lote19.js';
+import './ex_lote64.js';
+import './ex_lote83.js';
+import { PELVIC_TILT } from './pr_custom.js';
+
+Object.assign(EXERCISES, {
+  "PR-FAS-008": { ...EXERCISES["TI-PAN-003"], labelAll: true, sub: "Fascia plantar", primary: ["Gastrocnemio y sóleo", "Estabilizadores de tobillo"], secondary: [], name: "Fortalecimiento de tibial posterior en cadena cerrada", level: "Intermedio",
+    captions: { intro: "De pie sobre una pierna", reps: [["Sube de puntillas llevando el talón ligeramente hacia dentro", "Baja despacio"], ["Arco del pie elevado durante el movimiento", "Sin dejar caer el tobillo hacia dentro"], ["3 × 12 por pierna", "Cadena cerrada para el tibial posterior"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-009": { ...EXERCISES["TI-EST-006"], labelAll: true, sub: "Fascia plantar", primary: ["Estabilizadores de tobillo", "Estabilizadores de cadera y rodilla"], secondary: ["Glúteo medio"], name: "Control del arco plantar en apoyo monopodal (short foot)", level: "Intermedio",
+    captions: { intro: "De pie sobre una pierna descalzo", reps: [["Mantén el arco elevado (pie corto) mientras haces equilibrio", "Flexiona un poco la rodilla"], ["Los dedos no se encogen", "Pelvis nivelada"], ["3 × 30 s por pierna", "Progresión: superficie blanda"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-010": { ...EXERCISES["TI-EQU-010"], labelAll: true, sub: "Fascia plantar", primary: ["Estabilizadores de tobillo"], secondary: ["Gastrocnemio y sóleo", "Core"], name: "Progresión de carga en bipedestación prolongada", level: "Intermedio",
+    captions: { intro: "De pie, aumentando el tiempo en bipedestación", reps: [["Aumenta de forma progresiva el tiempo de pie", "Alterna el peso entre los pies"], ["Calzado con buen soporte", "Superficie blanda al principio"], ["Registra el tiempo sin dolor", "Pausas activas cada cierto tiempo"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-011": { ...EXERCISES["TI-TIB-002"], labelAll: true, sub: "Fascia plantar", primary: ["Estabilizadores de tobillo"], secondary: ["Tibial anterior"], name: "Movilidad de los dedos del pie (toe mobility drill)", level: "Avanzado",
+    captions: { intro: "Sentado o de pie, descalzo", reps: [["Separa los dedos, elévalos y bájalos de uno en uno", "Sube el dedo gordo dejando los demás abajo y al revés"], ["Movimiento controlado", "Sin calambres"], ["10 repeticiones de cada", "Mejora el control del pie"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-012": { ...EXERCISES["TI-EQU-005"], labelAll: true, sub: "Fascia plantar", primary: ["Estabilizadores de tobillo"], secondary: ["Gastrocnemio y sóleo", "Core"], name: "Progresión de marcha con calzado y superficie controlada", level: "Avanzado",
+    captions: { intro: "Caminando en una superficie llana", reps: [["Camina con pasos controlados apoyando talón, planta y dedos", "Calzado adecuado"], ["Aumenta el tiempo de marcha progresivamente", "Cambia de superficie poco a poco"], ["Sin dolor al día siguiente", "Sigue la pauta del profesional"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-013": { ...EXERCISES["TI-PAN-010"], labelAll: true, sub: "Fascia plantar", primary: ["Gastrocnemio y sóleo"], secondary: ["Estabilizadores de tobillo"], name: "Fortalecimiento excéntrico de la fascia plantar en escalón", level: "Avanzado",
+    captions: { intro: "De pie en un escalón con los dedos extendidos sobre una toalla", reps: [["Bajada lenta del talón en 3–5 s", "Sube con las dos piernas"], ["Dedos en extensión durante todo el movimiento", "Carga progresiva"], ["3 × 12", "Cada dos días"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-014": { ...EXERCISES["MO-PAS-001"], labelAll: true, sub: "Fascia plantar", primary: ["Isquiotibiales", "Gastrocnemio y sóleo"], secondary: [], name: "Estiramiento combinado de fascia plantar y cadena posterior", level: "Avanzado",
+    captions: { intro: "Boca arriba con una banda en la parte delantera del pie", reps: [["Sube la pierna estirada tirando de los dedos hacia ti", "Estira a la vez la planta, la pantorrilla y el isquiotibial"], ["Mantén 20–30 s", "Rodilla estirada"], ["2–3 repeticiones por pierna", "Sin rebotes"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-FAS-015": { ...EXERCISES["VE-TEC-007"], labelAll: true, sub: "Fascia plantar", primary: ["Gastrocnemio y sóleo", "Cuádriceps"], secondary: ["Estabilizadores de tobillo", "Core"], name: "Progresión de trote de baja intensidad (return to running)", level: "Avanzado",
+    captions: { intro: "Superficie blanda y llana", reps: [["Trote suave alternando con tramos de caminata", "Zancada corta y cadencia alta"], ["Sin dolor durante ni al día siguiente", "Calzado con buena amortiguación"], ["Aumenta el tiempo de trote poco a poco", "Sigue la pauta del profesional"]], orbit: ["Trote suave", "Retorno a la carrera: músculos que trabajan", "Termina caminando"] } },
+  "PR-FAS-016": { ...EXERCISES["TI-PLI-008"], labelAll: true, sub: "Fascia plantar", primary: ["Gastrocnemio y sóleo", "Cuádriceps"], secondary: ["Estabilizadores de tobillo", "Glúteos"], name: "Test funcional de tolerancia a la carga en salto (hop test adaptado)", level: "Avanzado",
+    captions: { intro: "De pie sobre una pierna", reps: [["Saltos a una pierna para valorar la tolerancia a la carga", "Anota el dolor de 0 a 10"], ["Compara con la otra pierna", "Aterrizaje suave"], ["2–3 series cortas", "Siempre con el profesional"]], orbit: ["Control", "Fascia plantar: músculos que trabajan", "Vuelve con control"] } },
+  "PR-LUM-001": { ...PELVIC_TILT, sub: "Rehabilitación lumbar", primary: ["Transverso abdominal", "Recto abdominal"], secondary: ["Erectores espinales"], name: "Control de báscula pélvica en decúbito supino (pelvic tilt)", level: "Principiante",
+    captions: { intro: "Boca arriba, rodillas dobladas y pies apoyados", reps: [["Bascula la pelvis aplanando la zona lumbar", "Vuelve a la posición neutra"], ["Movimiento pequeño y sin dolor", "Respira de forma tranquila"], ["10–15 repeticiones", "Primer paso del control lumbar"]], orbit: ["Control", "Rehabilitación lumbar: músculos que trabajan", "Vuelve con control"] } },
+});

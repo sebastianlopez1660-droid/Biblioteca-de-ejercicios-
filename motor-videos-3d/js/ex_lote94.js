@@ -1,0 +1,34 @@
+// Lote 94: PR-TOB-004 … PR-TOB-013 (generado por gen.py a partir de ejercicios ya definidos)
+import { EXERCISES } from './exercises.js';
+import './ex_lote13.js';
+import './ex_lote14.js';
+import './ex_lote15.js';
+import './ex_lote16.js';
+import './ex_lote17.js';
+import './ex_lote18.js';
+import './ex_lote19.js';
+import './ex_lote65.js';
+import './ex_lote66.js';
+
+Object.assign(EXERCISES, {
+  "PR-TOB-004": { ...EXERCISES["TI-TIB-006"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo"], secondary: ["Gastrocnemio y sóleo"], name: "Fortalecimiento de tibial posterior con banda", level: "Principiante",
+    captions: { intro: "Sentado o tumbado con una banda alrededor del pie", reps: [["Lleva el pie hacia dentro y abajo contra la banda (inversión)", "Vuelve despacio"], ["Solo se mueve el tobillo", "Rango sin dolor"], ["3 × 15", "Trabaja el tibial posterior"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-005": { ...EXERCISES["TI-PRE-009"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo", "Cuádriceps"], secondary: ["Glúteos", "Gastrocnemio y sóleo"], name: "Control neuromuscular de tobillo en aterrizaje de salto (post-esguince)", level: "Principiante",
+    captions: { intro: "De pie, preparado para saltar", reps: [["Salta y aterriza estable sobre el antepié y después todo el pie", "Clava la recepción 2 s"], ["Tobillo firme, sin ceder hacia fuera", "Rodillas alineadas"], ["Volumen bajo", "Progresión: aterrizaje a una pierna"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-006": { ...EXERCISES["TI-UNI-010"], labelAll: true, sub: "Prevención de tobillo", primary: ["Gastrocnemio y sóleo"], secondary: ["Estabilizadores de tobillo"], name: "Progresión de carga en elevación de talón tras esguince", level: "Intermedio",
+    captions: { intro: "De pie, apoyo ligero para el equilibrio", reps: [["Elevación de talón con carga creciente por fases", "Sube rápido, baja en 3 s"], ["Tobillo recto, sin irse hacia fuera", "Recorrido completo"], ["3 × 12–15", "Primero con dos piernas, después con una"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-007": { ...EXERCISES["TI-EQU-006"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo"], secondary: ["Estabilizadores de cadera y rodilla", "Core"], name: "Estabilidad de tobillo en superficie inestable con perturbación", level: "Intermedio",
+    captions: { intro: "De pie sobre una tabla inestable", reps: [["Mantén el equilibrio mientras un compañero te perturba", "Reacciona sin bajar la mirada"], ["Rodillas algo flexionadas", "Tronco estable"], ["3 × 30 s", "Empujes suaves e impredecibles"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-008": { ...EXERCISES["TI-PLI-005"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo", "Glúteo medio"], secondary: ["Cuádriceps", "Gastrocnemio y sóleo"], name: "Salto lateral controlado post-esguince (fase de reintroducción)", level: "Intermedio",
+    captions: { intro: "De pie sobre una pierna junto a una línea", reps: [["Salto lateral corto con aterrizaje estable", "Mantén 2 s antes del siguiente"], ["Tobillo firme al caer", "Distancia corta al principio"], ["6–8 por lado", "Fase de reintroducción"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-009": { ...EXERCISES["TI-EST-008"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo", "Estabilizadores de cadera y rodilla"], secondary: ["Glúteo medio", "Core"], name: "Equilibrio dinámico multidireccional (star excursion balance)", level: "Intermedio",
+    captions: { intro: "De pie sobre una pierna en el centro de una estrella", reps: [["Alcanza lo más lejos posible con el otro pie en varias direcciones", "Vuelve al centro sin apoyar"], ["Rodilla de apoyo alineada", "Pelvis estable"], ["3 vueltas por pierna", "Compara el alcance con la otra pierna"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-010": { ...EXERCISES["VE-TEC-010"], labelAll: true, sub: "Prevención de tobillo", primary: ["Gastrocnemio y sóleo", "Cuádriceps", "Isquiotibiales"], secondary: ["Estabilizadores de tobillo", "Core"], name: "Progresión de carrera en línea recta tras esguince de tobillo", level: "Intermedio",
+    captions: { intro: "Recorrido recto y llano", reps: [["Carrera suave en línea recta", "Sin cambios de dirección"], ["Apoyo estable del pie", "Sin dolor ni inflamación al día siguiente"], ["Aumenta el tiempo progresivamente", "Sigue la pauta del profesional"]], orbit: ["Carrera suave", "Retorno a la carrera: músculos que trabajan", "Termina caminando"] } },
+  "PR-TOB-011": { ...EXERCISES["AG-COD-004"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo", "Cuádriceps", "Glúteos"], secondary: ["Glúteo medio", "Core"], name: "Cambio de dirección de baja intensidad post-esguince", level: "Avanzado",
+    captions: { intro: "Recorrido con un cono de corte suave", reps: [["Cambios de dirección a baja velocidad", "Apoyo firme del tobillo"], ["Cadera baja en el corte", "Sin dolor"], ["Aumenta ángulo y velocidad por fases", "Vuelve caminando"]], orbit: ["Cambio de dirección", "Agilidad: músculos que trabajan", "Vuelve caminando"] } },
+  "PR-TOB-012": { ...EXERCISES["TI-EQU-001"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo"], secondary: ["Gastrocnemio y sóleo"], name: "Fortalecimiento de la musculatura intrínseca del pie (short foot exercise)", level: "Avanzado",
+    captions: { intro: "De pie descalzo, pie apoyado", reps: [["Acorta el pie elevando el arco sin doblar los dedos (pie corto)", "Mantén 5 s"], ["Primero sentado, después de pie y a una pierna", "Dedos relajados"], ["10 repeticiones", "Fortalece la musculatura intrínseca"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+  "PR-TOB-013": { ...EXERCISES["TI-PLI-008"], labelAll: true, sub: "Prevención de tobillo", primary: ["Estabilizadores de tobillo", "Cuádriceps"], secondary: ["Glúteos", "Gastrocnemio y sóleo"], name: "Control de aterrizaje a una pierna (post-esguince de tobillo)", level: "Avanzado",
+    captions: { intro: "De pie sobre una pierna", reps: [["Pequeño salto y aterrizaje a una pierna estable", "Mantén 2–3 s"], ["Tobillo y rodilla alineados", "Aterrizaje suave"], ["6–8 por pierna", "Aumenta la distancia poco a poco"]], orbit: ["Control", "Prevención de tobillo: músculos que trabajan", "Vuelve con control"] } },
+});

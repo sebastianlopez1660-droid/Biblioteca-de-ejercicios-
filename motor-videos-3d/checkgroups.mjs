@@ -1,6 +1,7 @@
 import fs from 'fs';
 const ex = await import('/home/claude/engine/js/exercises.js');
-for (const f of fs.readdirSync('/home/claude/engine/js').filter((f) => /^ex_lote\d+\.js$/.test(f))) await import('/home/claude/engine/js/' + f);
+const num = (f) => +f.match(/\d+/)[0];
+for (const f of fs.readdirSync('/home/claude/engine/js').filter((f) => /^ex_lote\d+\.js$/.test(f)).sort((a, b) => num(a) - num(b))) await import('/home/claude/engine/js/' + f);
 const keys = new Set(Object.keys(ex.GROUPS));
 const used = new Set();
 for (const [c, d] of Object.entries(ex.EXERCISES)) for (const m of [...(d.primary || []), ...(d.secondary || [])]) if (!keys.has(m)) used.add(m + ' <- ' + c.slice(0, 6));

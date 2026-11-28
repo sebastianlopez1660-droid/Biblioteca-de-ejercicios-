@@ -642,3 +642,21 @@ export function agilityLadder(o = {}) {
   g.traverse((m) => { if (m.isMesh) m.receiveShadow = true; });
   return g;
 }
+
+// rodillo de espuma (foam roller) tumbado a lo largo de X
+export function foamRoller(o = {}) {
+  const r = o.r ?? 0.075, len = o.len ?? 0.9;
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 28), new THREE.MeshStandardMaterial({ color: o.color ?? 0x3c5f86, roughness: 0.85 }));
+  m.rotation.z = Math.PI / 2; m.position.y = r;
+  const g = new THREE.Group(); g.add(m); if (o.alongZ) g.rotation.y = Math.PI / 2;
+  return shadowAll(g);
+}
+
+// tabla declinada (decline board) para sentadilla excéntrica: alta detrás, baja delante
+export function decline(o = {}) {
+  const ang = (o.ang ?? 25) * Math.PI / 180, z0 = o.z0 ?? -0.25, z1 = o.z1 ?? 0.20, w = o.w ?? 0.62, h = (z1 - z0) * Math.tan(ang);
+  const sh = new THREE.Shape(); sh.moveTo(z0, 0); sh.lineTo(z1, 0); sh.lineTo(z0, h); sh.lineTo(z0, 0);
+  const m = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: w, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: o.color ?? 0x6b5a45, roughness: 0.8 }));
+  m.rotation.y = -Math.PI / 2; m.position.x = w / 2; m.castShadow = true; m.receiveShadow = true;
+  const g = new THREE.Group(); g.add(m); return g;
+}
